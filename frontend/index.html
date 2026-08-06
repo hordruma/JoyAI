@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Joy AI</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13'%3E%F0%9F%8E%AD%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0e0d13;
+    --card: #1b1926;
+    --ink: #efeaf7;
+    --muted: #9a92b0;
+    --warm: #ffb020;
+    --cool: #5aa0ff;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: radial-gradient(ellipse at 50% -20%, #241f38 0%, var(--bg) 60%);
+    color: var(--ink);
+    font-family: Georgia, 'Times New Roman', serif;
+    min-height: 100vh;
+    padding: 2rem 1rem 4rem;
+  }
+  header { text-align: center; margin-bottom: 1.2rem; }
+  h1 { font-size: 2.1rem; letter-spacing: 0.12em; }
+  .tagline { color: var(--muted); font-size: 0.95rem; margin-top: 0.35rem; font-style: italic; }
+  .statusbar {
+    display: flex; justify-content: center; gap: 1rem; align-items: center;
+    margin: 1rem 0 1.5rem; font-size: 0.85rem; color: var(--muted);
+    font-family: ui-monospace, monospace;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #d04040; display: inline-block; }
+  .dot.on { background: #40d080; }
+  button {
+    background: transparent; color: var(--ink); border: 1px solid var(--muted);
+    border-radius: 999px; padding: 0.35rem 1rem; font: inherit; font-size: 0.85rem;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--ink); }
+  .stage {
+    display: flex; justify-content: center; gap: 5vw; align-items: flex-start;
+    margin: 0 auto 2rem; max-width: 1000px;
+  }
+  .side {
+    display: flex; flex-direction: column; align-items: center;
+    width: min(44vw, 380px);
+  }
+  .side.offset .column { margin-top: 5.6rem; }
+  .avatar { text-align: center; opacity: 0.55; transition: opacity 0.5s, transform 0.5s; width: 100%; }
+  .avatar.active { opacity: 1; transform: scale(1.04); }
+  .avatar .viewport {
+    width: min(38vw, 300px); height: min(38vw, 300px);
+    border-radius: 14px; overflow: hidden;
+    background: #000; margin: 0 auto;
+  }
+  .avatar canvas { width: 100%; height: 100%; display: block; }
+  .avatar figcaption {
+    margin-top: 0.55rem; color: var(--muted); font-size: 0.85rem;
+    font-family: ui-monospace, monospace;
+  }
+  .avatar.active figcaption { color: var(--ink); }
+  .column {
+    width: 100%; margin-top: 1.1rem;
+    display: flex; flex-direction: column; gap: 0.8rem;
+  }
+  .card {
+    background: var(--card); border-radius: 12px; padding: 0.85rem 1rem;
+    border-left: 4px solid var(--muted);
+    opacity: 0.55; transition: opacity 0.4s, box-shadow 0.4s;
+    animation: rise 0.6s ease;
+    flex-shrink: 0;
+  }
+  @keyframes rise {
+    from { transform: translateY(36px); opacity: 0; }
+    to   { transform: none; }
+  }
+  .card.speaking { opacity: 1; }
+  .card.speaking.HappyAvatar { box-shadow: 0 0 18px rgba(255, 176, 32, 0.25); }
+  .card.speaking.SadAvatar   { box-shadow: 0 0 18px rgba(90, 160, 255, 0.25); }
+  .card.HappyAvatar { border-left-color: var(--warm); }
+  .card.SadAvatar { border-left-color: var(--cool); }
+  .card .text { font-size: 0.98rem; }
+  .card .trans { color: var(--muted); font-style: italic; font-size: 0.92rem; margin-top: 0.4rem; }
+  .hint { text-align: center; color: var(--muted); font-style: italic; margin-top: 1rem; }
+  @media (max-width: 640px) {
+    .stage { gap: 3vw; }
+    .side.offset .column { margin-top: 3rem; }
+  }
+</style>
+<script type="importmap">
+{ "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<header>
+  <h1>JOY&thinsp;AI</h1>
+  <div class="tagline">a duet</div>
+</header>
+
+<div class="statusbar">
+  <span><span id="wsdot" class="dot"></span> <span id="wsstate">connecting…</span></span>
+  <button id="demo">rehearsal</button>
+  <button id="mute">🔊 sound on</button>
+</div>
+
+<div class="stage">
+  <div class="side">
+    <figure class="avatar" id="HappyAvatar">
+      <div class="viewport"></div>
+      <figcaption>JOY</figcaption>
+    </figure>
+    <div class="column" id="col-HappyAvatar"></div>
+  </div>
+  <div class="side offset">
+    <figure class="avatar" id="SadAvatar">
+      <div class="viewport"></div>
+      <figcaption>SORROW</figcaption>
+    </figure>
+    <div class="column" id="col-SadAvatar"></div>
+  </div>
+</div>
+
+<div class="hint" id="hint">listening…</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '/vendor/GLTFLoader.js';
+import { KTX2Loader } from '/vendor/KTX2Loader.js';
+import { MeshoptDecoder } from '/vendor/meshopt_decoder.module.js';
+
+// --- Real human faces: three.js facecap scan with ARKit blendshapes ------
+// Expression presets are morph-target name → weight. Unknown names are
+// skipped, so the code survives model changes.
+// Natural, sincere expressions — a warm Duchenne smile and quiet grief.
+// The piece should look entirely earnest at first glance.
+const EXPRESSIONS = {
+  HappyAvatar: {
+    mouthSmile_L: 0.75, mouthSmile_R: 0.75,
+    mouthDimple_L: 0.35, mouthDimple_R: 0.35,
+    cheekSquint_L: 0.5, cheekSquint_R: 0.5,
+    eyeSquint_L: 0.35, eyeSquint_R: 0.35,
+    browInnerUp: 0.12
+  },
+  SadAvatar: {
+    mouthFrown_L: 0.65, mouthFrown_R: 0.65,
+    browInnerUp: 0.85,
+    mouthShrugLower: 0.35,
+    eyeLookDown_L: 0.3, eyeLookDown_R: 0.3,
+    eyeSquint_L: 0.15, eyeSquint_R: 0.15
+  }
+};
+
+const LIGHTING = {
+  HappyAvatar: { key: 0xffe9cc, fill: 0xffb070, intensity: 2.3 },
+  SadAvatar:   { key: 0xccd9f5, fill: 0x7a90c0, intensity: 2.0 }
+};
+
+const faces = {};  // id -> { mixWeight helpers }
+
+function findMorphMesh(root) {
+  let found = null;
+  root.traverse(function (node) {
+    if (!found && node.isMesh && node.morphTargetDictionary &&
+        'jawOpen' in node.morphTargetDictionary) {
+      found = node;
+    }
+  });
+  if (!found) {
+    root.traverse(function (node) {
+      if (!found && node.isMesh && node.morphTargetDictionary) found = node;
+    });
+  }
+  return found;
+}
+
+async function buildFace(id) {
+  const container = document.querySelector('#' + id + ' .viewport');
+  const size = container.clientWidth || 320;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(size, size);
+  container.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const light = LIGHTING[id];
+  const key = new THREE.DirectionalLight(light.key, light.intensity);
+  key.position.set(0.5, 1, 1.2);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(light.fill, light.intensity * 0.45);
+  fill.position.set(-1, -0.2, 0.8);
+  scene.add(fill);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 50);
+
+  const ktx2 = new KTX2Loader()
+    .setTranscoderPath('/vendor/')
+    .detectSupport(renderer);
+  const loader = new GLTFLoader()
+    .setKTX2Loader(ktx2)
+    .setMeshoptDecoder(MeshoptDecoder);
+  const gltf = await loader.loadAsync('/assets/facecap.glb');
+  const root = gltf.scene;
+  scene.add(root);
+
+  const mesh = findMorphMesh(root);
+  const dict = mesh ? mesh.morphTargetDictionary : {};
+  const influences = mesh ? mesh.morphTargetInfluences : [];
+
+  // Frame the head using its bounding box
+  const box = new THREE.Box3().setFromObject(root);
+  const center = box.getCenter(new THREE.Vector3());
+  const dim = box.getSize(new THREE.Vector3());
+  camera.position.set(center.x, center.y + dim.y * 0.06, center.z + dim.y * 1.9);
+  camera.lookAt(center.x, center.y + dim.y * 0.06, center.z);
+
+  function setWeight(name, value) {
+    if (name in dict) influences[dict[name]] = value;
+  }
+
+  const base = EXPRESSIONS[id];
+  const state = {
+    speaking: false,
+    blinkAt: performance.now() + 1800 + Math.random() * 2500,
+    root, camera, renderer, scene, setWeight
+  };
+
+  function animate(now) {
+    requestAnimationFrame(animate);
+    // resting expression
+    for (const name in base) setWeight(name, base[name]);
+    // idle sway
+    const sway = state.speaking ? 0.045 : 0.02;
+    root.rotation.y = Math.sin(now / 1400) * sway;
+    root.rotation.x = Math.sin(now / 2100) * sway * 0.6;
+    // blink
+    if (now > state.blinkAt) {
+      const t = (now - state.blinkAt) / 150;
+      if (t > 1) {
+        state.blinkAt = now + 1800 + Math.random() * 2800;
+        setWeight('eyeBlink_L', 0); setWeight('eyeBlink_R', 0);
+      } else {
+        const w = Math.sin(t * Math.PI);
+        setWeight('eyeBlink_L', w); setWeight('eyeBlink_R', w);
+      }
+    }
+    // mouth flap while speaking
+    if (state.speaking) {
+      const w = 0.1 + Math.abs(Math.sin(now / 85)) * 0.45 * (0.6 + Math.random() * 0.4);
+      setWeight('jawOpen', w);
+    } else {
+      setWeight('jawOpen', 0.02);
+    }
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(animate);
+  faces[id] = state;
+}
+
+Promise.all([buildFace('HappyAvatar'), buildFace('SadAvatar')])
+  .catch(function (e) {
+    console.error('avatar load failed', e);
+  });
+
+// --- Columns, queue, TTS -------------------------------------------------
+const hint = document.getElementById('hint');
+const wsdot = document.getElementById('wsdot');
+const wsstate = document.getElementById('wsstate');
+const muteBtn = document.getElementById('mute');
+let muted = false;
+let speaking = false;
+const queues = { HappyAvatar: [], SadAvatar: [] };
+let lastSide = 'SadAvatar';  // so the first pick goes to Joy
+
+function nextPayload() {
+  const other = lastSide === 'HappyAvatar' ? 'SadAvatar' : 'HappyAvatar';
+  const side = queues[other].length ? other
+             : (queues[lastSide].length ? lastSide : null);
+  if (!side) return null;
+  lastSide = side;
+  return queues[side].shift();
+}
+
+// Free browser TTS. The comment is spoken VERBATIM (or its faithful
+// English translation, for non-English comments) — only the delivery is
+// juxtaposed: gleeful for negative comments, mournful for positive.
+const VOICES = {
+  HappyAvatar: { pitch: 1.7, rate: 1.15 },
+  SadAvatar:   { pitch: 0.5, rate: 0.7 }
+};
+
+// Cards are revealed only when their face starts reading them — one by
+// one, rising into that avatar's column from the bottom.
+function appendCard(p) {
+  if (hint) hint.remove();
+  const col = document.getElementById('col-' + p.targetAvatar);
+  const card = document.createElement('div');
+  card.className = 'card ' + p.targetAvatar;
+  const text = document.createElement('div');
+  text.className = 'text';
+  text.textContent = p.originalComment;
+  card.appendChild(text);
+  if (p.englishTranslation) {
+    const trans = document.createElement('div');
+    trans.className = 'trans';
+    trans.textContent = '“' + p.englishTranslation + '”';
+    card.appendChild(trans);
+  }
+  col.appendChild(card);
+  while (col.children.length > 4) col.removeChild(col.firstChild);
+  return card;
+}
+
+function enqueue(p) {
+  if (!p || !p.originalComment || !(p.targetAvatar in queues)) return;
+  queues[p.targetAvatar].push(p);
+  pump();
+}
+
+function pump() {
+  if (speaking) return;
+  const p = nextPayload();
+  if (!p) return;
+  const el = document.getElementById(p.targetAvatar);
+  const face = faces[p.targetAvatar];
+  const card = appendCard(p);
+  speaking = true;
+
+  let finished = false;
+  let started = false;
+  function begin() {
+    started = true;
+    card.classList.add('speaking');
+    if (el) el.classList.add('active');
+    if (face) face.speaking = true;
+  }
+  function finish() {
+    if (finished) return;
+    finished = true;
+    card.classList.remove('speaking');
+    if (el) el.classList.remove('active');
+    if (face) face.speaking = false;
+    speaking = false;
+    setTimeout(pump, 700);
+  }
+
+  if (muted || !('speechSynthesis' in window)) {
+    begin();
+    setTimeout(finish, 1500);
+    return;
+  }
+
+  const u = new SpeechSynthesisUtterance(p.englishTranslation || p.originalComment);
+  const v = VOICES[p.targetAvatar] || {};
+  u.pitch = v.pitch || 1;
+  u.rate = v.rate || 1;
+  u.onstart = begin;
+  u.onend = u.onerror = finish;
+  speechSynthesis.speak(u);
+  // Watchdogs: some browsers (and headless environments) never fire
+  // utterance events — don't let the queue stall.
+  setTimeout(function () { if (!started) { begin(); finish(); } }, 3000);
+  setTimeout(finish, 45000);
+}
+
+// --- WebSocket -----------------------------------------------------------
+function wsUrl() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  return proto + '://' + location.hostname + ':8080';
+}
+function connect() {
+  let ws;
+  try { ws = new WebSocket(wsUrl()); } catch (e) { return retry(); }
+  ws.onopen = function () { wsdot.classList.add('on'); wsstate.textContent = 'live'; };
+  ws.onmessage = function (ev) {
+    try { enqueue(JSON.parse(ev.data)); } catch (e) { /* skip bad frame */ }
+  };
+  ws.onclose = function () {
+    wsdot.classList.remove('on'); wsstate.textContent = 'reconnecting…'; retry();
+  };
+  ws.onerror = function () { ws.close(); };
+}
+function retry() { setTimeout(connect, 5000); }
+connect();
+
+// --- Controls ------------------------------------------------------------
+muteBtn.onclick = function () {
+  muted = !muted;
+  muteBtn.textContent = muted ? '🔇 sound off' : '🔊 sound on';
+  if (muted) speechSynthesis.cancel();
+};
+
+document.getElementById('demo').onclick = function () {
+  enqueue({
+    originalComment: 'AI art is soulless garbage and everyone making it should be ashamed.',
+    sentiment: { tag: 'Negative', contents: 0.92 },
+    englishTranslation: null,
+    targetAvatar: 'HappyAvatar'
+  });
+  enqueue({
+    originalComment: 'AI is going to make everything so much better, I love this technology!',
+    sentiment: { tag: 'Positive', contents: 0.88 },
+    englishTranslation: null,
+    targetAvatar: 'SadAvatar'
+  });
+  enqueue({
+    originalComment: 'La IA nos va a quitar el trabajo a todos, es una vergüenza.',
+    sentiment: { tag: 'Negative', contents: 0.85 },
+    englishTranslation: 'AI is going to take all our jobs, it\'s a disgrace.',
+    targetAvatar: 'HappyAvatar'
+  });
+};
+</script>
+</body>
+</html>
