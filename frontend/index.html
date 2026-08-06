@@ -46,7 +46,7 @@
     display: flex; flex-direction: column; align-items: center;
     width: min(44vw, 380px);
   }
-  .side.offset { margin-top: 4.5rem; }
+  .side.offset .column { margin-top: 5.6rem; }
   .avatar { text-align: center; opacity: 0.55; transition: opacity 0.5s, transform 0.5s; width: 100%; }
   .avatar.active { opacity: 1; transform: scale(1.04); }
   .avatar .viewport {
@@ -92,7 +92,7 @@
   .hint { text-align: center; color: var(--muted); font-style: italic; margin-top: 1rem; }
   @media (max-width: 640px) {
     .stage { gap: 3vw; }
-    .side.offset { margin-top: 2.5rem; }
+    .side.offset .column { margin-top: 3rem; }
     .column { height: 38vh; }
   }
 </style>
@@ -275,7 +275,17 @@ const wsstate = document.getElementById('wsstate');
 const muteBtn = document.getElementById('mute');
 let muted = false;
 let speaking = false;
-const queue = [];
+const queues = { HappyAvatar: [], SadAvatar: [] };
+let lastSide = 'SadAvatar';  // so the first pick goes to Joy
+
+function nextPayload() {
+  const other = lastSide === 'HappyAvatar' ? 'SadAvatar' : 'HappyAvatar';
+  const side = queues[other].length ? other
+             : (queues[lastSide].length ? lastSide : null);
+  if (!side) return null;
+  lastSide = side;
+  return queues[side].shift();
+}
 
 // Free browser TTS. The comment is spoken VERBATIM (or its faithful
 // English translation, for non-English comments) — only the delivery is
@@ -319,14 +329,15 @@ function appendCard(p) {
 }
 
 function enqueue(p) {
-  if (!p || !p.targetAvatar || !p.originalComment) return;
-  queue.push(p);
+  if (!p || !p.originalComment || !(p.targetAvatar in queues)) return;
+  queues[p.targetAvatar].push(p);
   pump();
 }
 
 function pump() {
-  if (speaking || queue.length === 0) return;
-  const p = queue.shift();
+  if (speaking) return;
+  const p = nextPayload();
+  if (!p) return;
   const el = document.getElementById(p.targetAvatar);
   const face = faces[p.targetAvatar];
   const card = appendCard(p);
