@@ -4,11 +4,12 @@ version:            0.2.0.0
 synopsis:           Joy AI — intonation-juxtaposed AI commentary art piece
 description:
   A purely functional Haskell backend that ingests internet commentary
-  about generative AI via Tavily, annotates it (sentiment score + Toki
-  Pona translation) through an LLM engine, and streams structured
-  payloads over WebSockets to a dual-avatar frontend. Comments are read
-  aloud verbatim by a real animated human face whose intonation
-  contradicts the sentiment: hate is read gleefully, praise mournfully.
+  about generative AI via Tavily, annotates it (sentiment score, plus an
+  English translation for non-English comments) through an LLM engine,
+  and streams structured payloads over WebSockets to a dual-avatar
+  frontend. Comments are read aloud verbatim by a real animated human
+  face whose intonation contradicts the sentiment: hate is read
+  gleefully, praise mournfully.
 license:            WTFPL
 license-file:       LICENSE
 author:             JoyAI

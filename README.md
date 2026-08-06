@@ -10,8 +10,8 @@ only the delivery is juxtaposed:
 - **Pro-AI / positive comments** → read by **Sorrow**, grieving, in a
   slow mournful voice.
 
-Each comment is also translated (faithfully) into Toki Pona and shown as
-a subtitle.
+Comments that aren't in English are faithfully translated so the voices
+can read them; everything else passes through untouched.
 
 ```
 [ Tavily Search API ]
@@ -21,7 +21,7 @@ a subtitle.
 │ Haskell backend (IO / exceptional bounds)   │
 │  1. Ingest via http-conduit                 │
 │  2. Parse strictly into Aeson ADTs          │
-│  3. LLM annotation: sentiment + Toki Pona   │
+│  3. LLM annotation: sentiment (+ English)   │
 │  4. Pure juxtaposition routing (Logic.hs)   │
 │  5. Serialize CommentPayload to JSON        │
 └─────────────────────────────────────────────┘

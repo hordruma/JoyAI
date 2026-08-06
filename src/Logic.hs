@@ -29,11 +29,11 @@ juxtapose score = case score of
 buildPayload
   :: Text            -- ^ original comment, verbatim
   -> SentimentScore  -- ^ sentiment as scored by the LLM
-  -> Maybe Text      -- ^ Toki Pona translation, when available
+  -> Maybe Text      -- ^ English translation, only for non-English comments
   -> CommentPayload
-buildPayload original score tokiPona = CommentPayload
-  { originalComment     = original
-  , sentiment           = score
-  , tokiPonaTranslation = tokiPona
-  , targetAvatar        = juxtapose score
+buildPayload original score english = CommentPayload
+  { originalComment    = original
+  , sentiment          = score
+  , englishTranslation = english
+  , targetAvatar       = juxtapose score
   }

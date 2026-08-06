@@ -67,8 +67,7 @@
     margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.08em;
   }
   .card .text { font-size: 1.05rem; }
-  .card .tp { color: var(--warm); font-style: italic; font-size: 0.92rem; margin-top: 0.4rem; }
-  .card.SadAvatar .tp { color: var(--cool); }
+  .card .trans { color: var(--muted); font-style: italic; font-size: 0.92rem; margin-top: 0.4rem; }
   .empty, .loading { text-align: center; color: var(--muted); font-style: italic; }
 </style>
 <script type="importmap">
@@ -248,8 +247,9 @@ let muted = false;
 let speaking = false;
 const queue = [];
 
-// Free browser TTS. The comment is spoken VERBATIM — only the delivery
-// is juxtaposed: gleeful for negative comments, mournful for positive.
+// Free browser TTS. The comment is spoken VERBATIM (or its faithful
+// English translation, for non-English comments) — only the delivery is
+// juxtaposed: gleeful for negative comments, mournful for positive.
 const VOICES = {
   HappyAvatar: { pitch: 1.7, rate: 1.15 },
   SadAvatar:   { pitch: 0.5, rate: 0.7 }
@@ -275,11 +275,11 @@ function render(p) {
   text.textContent = p.originalComment;
   card.appendChild(meta);
   card.appendChild(text);
-  if (p.tokiPonaTranslation) {
-    const tp = document.createElement('div');
-    tp.className = 'tp';
-    tp.textContent = '“' + p.tokiPonaTranslation + '”';
-    card.appendChild(tp);
+  if (p.englishTranslation) {
+    const trans = document.createElement('div');
+    trans.className = 'trans';
+    trans.textContent = 'translated: “' + p.englishTranslation + '”';
+    card.appendChild(trans);
   }
   feed.insertBefore(card, feed.firstChild);
   while (feed.children.length > 20) feed.removeChild(feed.lastChild);
@@ -303,7 +303,7 @@ function pump() {
     return;
   }
   speaking = true;
-  const u = new SpeechSynthesisUtterance(p.originalComment);
+  const u = new SpeechSynthesisUtterance(p.englishTranslation || p.originalComment);
   const v = VOICES[p.targetAvatar] || {};
   u.pitch = v.pitch || 1;
   u.rate = v.rate || 1;
@@ -360,14 +360,20 @@ document.getElementById('demo').onclick = function () {
   enqueue({
     originalComment: 'AI art is soulless garbage and everyone making it should be ashamed.',
     sentiment: { tag: 'Negative', contents: 0.92 },
-    tokiPonaTranslation: 'sitelen pi ilo sona li jaki li jo ala e kon. jan pali ona li ken pilin ike.',
+    englishTranslation: null,
     targetAvatar: 'HappyAvatar'
   });
   enqueue({
     originalComment: 'AI is going to make everything so much better, I love this technology!',
     sentiment: { tag: 'Positive', contents: 0.88 },
-    tokiPonaTranslation: 'ilo sona li pona e ale. mi olin e ilo ni a!',
+    englishTranslation: null,
     targetAvatar: 'SadAvatar'
+  });
+  enqueue({
+    originalComment: 'La IA nos va a quitar el trabajo a todos, es una vergüenza.',
+    sentiment: { tag: 'Negative', contents: 0.85 },
+    englishTranslation: 'AI is going to take all our jobs, it\'s a disgrace.',
+    targetAvatar: 'HappyAvatar'
   });
 };
 </script>

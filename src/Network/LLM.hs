@@ -5,12 +5,13 @@
 -- chat-completions API (GLM \/ Z.ai by default; Kimi \/ Moonshot,
 -- DeepSeek, OpenRouter, etc. via configuration).
 --
--- The LLM never rewrites the comment — it only scores sentiment and
--- produces a faithful Toki Pona translation:
+-- The LLM never rewrites the comment — it only scores sentiment and,
+-- when the comment isn't already English, provides a faithful English
+-- translation:
 --
 -- > { "sentiment": "Positive",
 -- >   "sentiment_score": 0.85,
--- >   "toki_pona_text": "..." }
+-- >   "english_translation": null }
 module Network.LLM
   ( LLMConfig (..)
   , annotateComment
@@ -41,7 +42,7 @@ data LLMConfig = LLMConfig
 data LLMAnnotation = LLMAnnotation
   { annotated_sentiment :: Text
   , sentiment_score     :: Double
-  , toki_pona_text      :: Maybe Text
+  , english_translation :: Maybe Text
   } deriving (Show, Generic)
 
 instance FromJSON LLMAnnotation where
@@ -49,7 +50,7 @@ instance FromJSON LLMAnnotation where
     LLMAnnotation
       <$> o .: "sentiment"
       <*> o .: "sentiment_score"
-      <*> o .:? "toki_pona_text"
+      <*> o .:? "english_translation"
 
 -- | Minimal projection of an OpenAI-compatible chat completion.
 newtype ChatChoice = ChatChoice
@@ -76,13 +77,15 @@ systemPrompt = T.unlines
   , ""
   , "1. Score the comment's sentiment toward AI: Positive, Negative,"
   , "   or Neutral, with a 0-1 intensity score."
-  , "2. Translate the comment into Toki Pona as faithfully as possible."
-  , "   Do NOT soften, invert, or editorialize — preserve the meaning."
+  , "2. If the comment is NOT in English, translate it into English as"
+  , "   faithfully as possible — do NOT soften, invert, or editorialize."
+  , "   If the comment is already in English, set english_translation"
+  , "   to null. Never rewrite English comments."
   , ""
   , "Respond with ONLY a JSON object, no prose, in exactly this shape:"
   , "{\"sentiment\": \"Positive\" | \"Negative\" | \"Neutral\","
   , " \"sentiment_score\": <number between 0 and 1>,"
-  , " \"toki_pona_text\": \"<faithful toki pona translation>\"}"
+  , " \"english_translation\": \"<english translation>\" | null}"
   ]
 
 -- | Run one comment through the annotation engine and assemble the
@@ -148,12 +151,12 @@ stripFences t =
   in T.strip (maybe unfenced id (T.stripSuffix "```" (T.strip unfenced)))
 
 toPayload :: Text -> LLMAnnotation -> CommentPayload
-toPayload comment ann = buildPayload comment score tokiPona
+toPayload comment ann = buildPayload comment score english
   where
     score = case annotated_sentiment ann of
       "Positive" -> Positive (sentiment_score ann)
       "Negative" -> Negative (sentiment_score ann)
       _          -> Neutral
-    tokiPona = case toki_pona_text ann of
+    english = case english_translation ann of
       Just t | not (T.null t) -> Just t
       _                       -> Nothing

@@ -42,10 +42,10 @@ instance FromJSON AvatarTarget
 -- reads the comment aloud, always the opposite affect of the comment
 -- itself.
 data CommentPayload = CommentPayload
-  { originalComment     :: !Text
-  , sentiment           :: !SentimentScore
-  , tokiPonaTranslation :: !(Maybe Text)
-  , targetAvatar        :: !AvatarTarget
+  { originalComment    :: !Text
+  , sentiment          :: !SentimentScore
+  , englishTranslation :: !(Maybe Text)  -- ^ only when the source isn't English
+  , targetAvatar       :: !AvatarTarget
   } deriving (Show, Eq, Generic)
 
 instance ToJSON CommentPayload

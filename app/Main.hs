@@ -4,7 +4,7 @@
 --
 -- Runs a WebSocket broadcast server on port 8080 and a polling event
 -- loop: every cycle it fetches a batch of comments from Tavily,
--- annotates them (sentiment + Toki Pona) through the LLM engine, and
+-- annotates them (sentiment + English translation when needed) through the LLM engine, and
 -- broadcasts the resulting 'CommentPayload' JSON frames to every
 -- subscribed frontend client. The frontend and a health endpoint are
 -- served on port 8081.
