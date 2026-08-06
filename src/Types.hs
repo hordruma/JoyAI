@@ -1,14 +1,14 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Core algebraic data types for the SadClown pipeline.
+-- | Core algebraic data types for the Joy AI pipeline.
 --
 -- Domain constraints are enforced through ADTs rather than primitive
--- string types, per the pipeline specification.
+-- string types.
 module Types
   ( SentimentScore (..)
   , AvatarTarget (..)
-  , InvertedPayload (..)
+  , CommentPayload (..)
   , PipelineError (..)
   ) where
 
@@ -35,17 +35,21 @@ data AvatarTarget
 instance ToJSON AvatarTarget
 instance FromJSON AvatarTarget
 
--- | Core domain record for processed comment payloads
-data InvertedPayload = InvertedPayload
+-- | Core domain record for processed comment payloads.
+--
+-- The comment text is never altered — the juxtaposition happens in the
+-- delivery: 'targetAvatar' selects which face (and which intonation)
+-- reads the comment aloud, always the opposite affect of the comment
+-- itself.
+data CommentPayload = CommentPayload
   { originalComment     :: !Text
-  , originalSentiment   :: !SentimentScore
-  , invertedText        :: !Text
+  , sentiment           :: !SentimentScore
   , tokiPonaTranslation :: !(Maybe Text)
   , targetAvatar        :: !AvatarTarget
   } deriving (Show, Eq, Generic)
 
-instance ToJSON InvertedPayload
-instance FromJSON InvertedPayload
+instance ToJSON CommentPayload
+instance FromJSON CommentPayload
 
 -- | Failure paths for the exceptional (IO) boundary of the pipeline.
 -- Network errors and rate limits are carried in 'ExceptT' so a failed

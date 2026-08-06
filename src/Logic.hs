@@ -1,9 +1,9 @@
--- | Pure logic core: sentiment inversion rules.
+-- | Pure logic core: intonation juxtaposition rules.
 --
--- This module MUST remain free of IO imports. Inversion routing is
--- strictly pure and completely decoupled from side effects.
+-- This module MUST remain free of IO imports. Routing is strictly pure
+-- and completely decoupled from side effects.
 module Logic
-  ( invertSentiment
+  ( juxtapose
   , buildPayload
   ) where
 
@@ -11,30 +11,29 @@ import Data.Text (Text)
 
 import Types
 
--- | Pure function: Inverts sentiment and maps the target avatar.
+-- | Pure function: maps a comment's sentiment to the avatar whose
+-- delivery contradicts it. The words are never changed — only the
+-- intonation.
 --
--- Anti-AI \/ negative comments are routed to the 'HappyAvatar' (read as
--- manic, hyper-joyful text); pro-AI \/ positive comments are routed to
--- the 'SadAvatar' (read as weeping, existential despair).
-invertSentiment :: SentimentScore -> AvatarTarget
-invertSentiment score = case score of
-  Positive _ -> SadAvatar   -- Pro-AI comments read by Sad Avatar
-  Negative _ -> HappyAvatar -- Anti-AI comments read by Happy Avatar
+-- Anti-AI \/ negative comments are read by the 'HappyAvatar' in a
+-- gleeful, cheerful voice; pro-AI \/ positive comments are read by the
+-- 'SadAvatar' in a somber, mournful voice.
+juxtapose :: SentimentScore -> AvatarTarget
+juxtapose score = case score of
+  Positive _ -> SadAvatar   -- Pro-AI comments read mournfully
+  Negative _ -> HappyAvatar -- Anti-AI comments read gleefully
   Neutral    -> SadAvatar   -- Default fallback
 
--- | Assemble the outbound payload from the original comment and the
--- LLM-produced inversion. Pure: the avatar routing is derived here, not
--- taken from the LLM.
+-- | Assemble the outbound payload. Pure: the avatar routing is derived
+-- here, not taken from the LLM.
 buildPayload
-  :: Text            -- ^ original comment
+  :: Text            -- ^ original comment, verbatim
   -> SentimentScore  -- ^ sentiment as scored by the LLM
-  -> Text            -- ^ inverted-meaning text
   -> Maybe Text      -- ^ Toki Pona translation, when available
-  -> InvertedPayload
-buildPayload original sentiment inverted tokiPona = InvertedPayload
+  -> CommentPayload
+buildPayload original score tokiPona = CommentPayload
   { originalComment     = original
-  , originalSentiment   = sentiment
-  , invertedText        = inverted
+  , sentiment           = score
   , tokiPonaTranslation = tokiPona
-  , targetAvatar        = invertSentiment sentiment
+  , targetAvatar        = juxtapose score
   }

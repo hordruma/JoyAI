@@ -3,32 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SadClown — JoyAI</title>
+<title>Joy AI</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13'%3E%F0%9F%8E%AD%3C/text%3E%3C/svg%3E">
 <style>
   :root {
-    --bg: #12101a;
-    --card: #1e1a2b;
+    --bg: #0e0d13;
+    --card: #1b1926;
     --ink: #efeaf7;
     --muted: #9a92b0;
-    --happy: #ffb020;
-    --sad: #5aa0ff;
+    --warm: #ffb020;
+    --cool: #5aa0ff;
   }
   * { box-sizing: border-box; margin: 0; }
   body {
-    background: radial-gradient(ellipse at 50% -20%, #2a2440 0%, var(--bg) 60%);
+    background: radial-gradient(ellipse at 50% -20%, #241f38 0%, var(--bg) 60%);
     color: var(--ink);
     font-family: Georgia, 'Times New Roman', serif;
     min-height: 100vh;
     padding: 2rem 1rem 4rem;
   }
-  header { text-align: center; margin-bottom: 1.5rem; }
-  h1 { font-size: 2rem; letter-spacing: 0.06em; }
-  h1 em { color: var(--happy); font-style: italic; }
-  h1 .sad { color: var(--sad); }
-  .tagline { color: var(--muted); font-size: 0.95rem; margin-top: 0.3rem; }
+  header { text-align: center; margin-bottom: 1.2rem; }
+  h1 { font-size: 2.1rem; letter-spacing: 0.12em; }
+  .tagline { color: var(--muted); font-size: 0.95rem; margin-top: 0.35rem; font-style: italic; }
   .statusbar {
     display: flex; justify-content: center; gap: 1rem; align-items: center;
-    margin: 1rem 0; font-size: 0.85rem; color: var(--muted);
+    margin: 1rem 0 1.5rem; font-size: 0.85rem; color: var(--muted);
     font-family: ui-monospace, monospace;
   }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: #d04040; display: inline-block; }
@@ -40,19 +39,19 @@
   }
   button:hover { border-color: var(--ink); }
   .stage {
-    display: flex; justify-content: center; gap: 4vw; align-items: flex-end;
-    margin: 1rem auto 2rem; max-width: 900px;
+    display: flex; justify-content: center; gap: 3vw; align-items: flex-end;
+    margin: 0 auto 2rem; max-width: 960px; flex-wrap: wrap;
   }
-  .avatar {
-    width: min(38vw, 300px); text-align: center;
-    filter: grayscale(0.55) brightness(0.6);
-    transition: filter 0.4s, transform 0.4s;
+  .avatar { text-align: center; opacity: 0.55; transition: opacity 0.5s, transform 0.5s; }
+  .avatar.active { opacity: 1; transform: scale(1.04); }
+  .avatar .viewport {
+    width: min(42vw, 340px); height: min(42vw, 340px);
+    border-radius: 14px; overflow: hidden;
+    background: #000;
   }
-  .avatar.active {
-    filter: none; transform: scale(1.06);
-  }
+  .avatar canvas { width: 100%; height: 100%; display: block; }
   .avatar figcaption {
-    margin-top: 0.5rem; color: var(--muted); font-size: 0.85rem;
+    margin-top: 0.55rem; color: var(--muted); font-size: 0.85rem;
     font-family: ui-monospace, monospace;
   }
   .avatar.active figcaption { color: var(--ink); }
@@ -61,19 +60,25 @@
     background: var(--card); border-radius: 12px; padding: 1rem 1.2rem;
     border-left: 4px solid var(--muted);
   }
-  .card.HappyAvatar { border-left-color: var(--happy); }
-  .card.SadAvatar { border-left-color: var(--sad); }
-  .card .orig { color: var(--muted); font-size: 0.85rem; text-decoration: line-through; }
-  .card .inv { margin: 0.4rem 0; font-size: 1.05rem; }
-  .card .tp { color: var(--happy); font-style: italic; font-size: 0.95rem; }
-  .card.SadAvatar .tp { color: var(--sad); }
-  .empty { text-align: center; color: var(--muted); font-style: italic; }
+  .card.HappyAvatar { border-left-color: var(--warm); }
+  .card.SadAvatar { border-left-color: var(--cool); }
+  .card .meta {
+    color: var(--muted); font-size: 0.75rem; font-family: ui-monospace, monospace;
+    margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .card .text { font-size: 1.05rem; }
+  .card .tp { color: var(--warm); font-style: italic; font-size: 0.92rem; margin-top: 0.4rem; }
+  .card.SadAvatar .tp { color: var(--cool); }
+  .empty, .loading { text-align: center; color: var(--muted); font-style: italic; }
 </style>
+<script type="importmap">
+{ "imports": { "three": "/vendor/three.module.js" } }
+</script>
 </head>
 <body>
 <header>
-  <h1><em>Happy</em> / <span class="sad">Sad</span> Clown</h1>
-  <div class="tagline">every opinion about AI, inverted, in Toki Pona</div>
+  <h1>JOY&thinsp;AI</h1>
+  <div class="tagline">every opinion about AI, read aloud in the wrong voice</div>
 </header>
 
 <div class="statusbar">
@@ -84,187 +89,287 @@
 
 <div class="stage">
   <figure class="avatar" id="HappyAvatar">
-    <svg viewBox="0 0 200 210" aria-label="Happy clown">
-      <ellipse cx="100" cy="115" rx="72" ry="80" fill="#fce9d6"/>
-      <circle cx="45" cy="80" r="22" fill="#ff5a5a"/>
-      <circle cx="155" cy="80" r="22" fill="#5ad0ff"/>
-      <circle cx="70" cy="48" r="18" fill="#ffd23f"/>
-      <circle cx="130" cy="48" r="18" fill="#7dff6a"/>
-      <circle cx="100" cy="36" r="16" fill="#ff8ae0"/>
-      <circle cx="72" cy="105" r="9" fill="#221"/>
-      <circle cx="128" cy="105" r="9" fill="#221"/>
-      <path d="M55 98 Q72 84 89 98" stroke="#221" stroke-width="4" fill="none"/>
-      <path d="M111 98 Q128 84 145 98" stroke="#221" stroke-width="4" fill="none"/>
-      <circle cx="100" cy="130" r="15" fill="#e33"/>
-      <ellipse class="mouth" cx="100" cy="165" rx="34" ry="10" fill="#a12"/>
-      <path d="M66 165 Q100 195 134 165" stroke="#221" stroke-width="4" fill="none"/>
-    </svg>
-    <figcaption>HAPPY — reads the haters</figcaption>
+    <div class="viewport"></div>
+    <figcaption>JOY — reads the hate, beaming</figcaption>
   </figure>
-
   <figure class="avatar" id="SadAvatar">
-    <svg viewBox="0 0 200 210" aria-label="Sad clown">
-      <ellipse cx="100" cy="115" rx="72" ry="80" fill="#e7e2f2"/>
-      <path d="M30 55 Q60 20 100 26 Q140 20 170 55 L160 70 Q100 45 40 70 Z" fill="#3b3560"/>
-      <circle cx="72" cy="108" r="8" fill="#221"/>
-      <circle cx="128" cy="108" r="8" fill="#221"/>
-      <path d="M55 96 Q72 104 89 94" stroke="#221" stroke-width="4" fill="none"/>
-      <path d="M111 94 Q128 104 145 96" stroke="#221" stroke-width="4" fill="none"/>
-      <path d="M72 120 q6 16 0 26 q-10 -4 -6 -18 Z" fill="#5aa0ff"/>
-      <circle cx="100" cy="132" r="14" fill="#7a5aff"/>
-      <ellipse class="mouth" cx="100" cy="172" rx="26" ry="8" fill="#425"/>
-      <path d="M70 182 Q100 158 130 182" stroke="#221" stroke-width="4" fill="none"/>
-    </svg>
-    <figcaption>SAD — reads the believers</figcaption>
+    <div class="viewport"></div>
+    <figcaption>SORROW — reads the praise, grieving</figcaption>
   </figure>
 </div>
 
 <div class="feed" id="feed">
-  <div class="empty">waiting for inverted opinions…</div>
+  <div class="empty">waiting for opinions…</div>
 </div>
 
-<script>
-(function () {
-  'use strict';
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '/vendor/GLTFLoader.js';
+import { KTX2Loader } from '/vendor/KTX2Loader.js';
+import { MeshoptDecoder } from '/vendor/meshopt_decoder.module.js';
 
-  var feed = document.getElementById('feed');
-  var wsdot = document.getElementById('wsdot');
-  var wsstate = document.getElementById('wsstate');
-  var muteBtn = document.getElementById('mute');
-  var muted = false;
-  var queue = [];
-  var speaking = false;
-
-  // --- WebSocket ---------------------------------------------------------
-  function wsUrl() {
-    var proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    return proto + '://' + location.hostname + ':8080';
+// --- Real human faces: three.js facecap scan with ARKit blendshapes ------
+// Expression presets are morph-target name → weight. Unknown names are
+// skipped, so the code survives model changes.
+const EXPRESSIONS = {
+  HappyAvatar: {
+    mouthSmileLeft: 0.95, mouthSmileRight: 0.95,
+    cheekSquintLeft: 0.6, cheekSquintRight: 0.6,
+    eyeSquintLeft: 0.35, eyeSquintRight: 0.35,
+    browInnerUp: 0.25
+  },
+  SadAvatar: {
+    mouthFrownLeft: 0.9, mouthFrownRight: 0.9,
+    browInnerUp: 1.0,
+    mouthShrugLower: 0.4,
+    eyeLookDownLeft: 0.25, eyeLookDownRight: 0.25
   }
+};
 
-  function connect() {
-    var ws;
-    try { ws = new WebSocket(wsUrl()); } catch (e) { return retry(); }
-    ws.onopen = function () {
-      wsdot.classList.add('on');
-      wsstate.textContent = 'live';
-    };
-    ws.onmessage = function (ev) {
-      try { enqueue(JSON.parse(ev.data)); } catch (e) { /* skip bad frame */ }
-    };
-    ws.onclose = function () {
-      wsdot.classList.remove('on');
-      wsstate.textContent = 'reconnecting…';
-      retry();
-    };
-    ws.onerror = function () { ws.close(); };
-  }
-  function retry() { setTimeout(connect, 5000); }
-  connect();
+const LIGHTING = {
+  HappyAvatar: { key: 0xffd9a0, fill: 0xff9040, intensity: 2.6 },
+  SadAvatar:   { key: 0x9ab8ff, fill: 0x3050a0, intensity: 1.4 }
+};
 
-  // --- Queue + render ----------------------------------------------------
-  function enqueue(payload) {
-    if (!payload || !payload.targetAvatar) return;
-    render(payload);
-    queue.push(payload);
-    pump();
-  }
+const faces = {};  // id -> { mixWeight helpers }
 
-  function render(p) {
-    var empty = feed.querySelector('.empty');
-    if (empty) empty.remove();
-    var card = document.createElement('div');
-    card.className = 'card ' + p.targetAvatar;
-    var orig = document.createElement('div');
-    orig.className = 'orig';
-    orig.textContent = p.originalComment;
-    var inv = document.createElement('div');
-    inv.className = 'inv';
-    inv.textContent = p.invertedText;
-    card.appendChild(orig);
-    card.appendChild(inv);
-    if (p.tokiPonaTranslation) {
-      var tp = document.createElement('div');
-      tp.className = 'tp';
-      tp.textContent = '“' + p.tokiPonaTranslation + '”';
-      card.appendChild(tp);
+function findMorphMesh(root) {
+  let found = null;
+  root.traverse(function (node) {
+    if (!found && node.isMesh && node.morphTargetDictionary &&
+        'jawOpen' in node.morphTargetDictionary) {
+      found = node;
     }
-    feed.insertBefore(card, feed.firstChild);
-    while (feed.children.length > 20) feed.removeChild(feed.lastChild);
+  });
+  if (!found) {
+    root.traverse(function (node) {
+      if (!found && node.isMesh && node.morphTargetDictionary) found = node;
+    });
+  }
+  return found;
+}
+
+async function buildFace(id) {
+  const container = document.querySelector('#' + id + ' .viewport');
+  const size = container.clientWidth || 320;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(size, size);
+  container.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const light = LIGHTING[id];
+  const key = new THREE.DirectionalLight(light.key, light.intensity);
+  key.position.set(0.5, 1, 1.2);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(light.fill, light.intensity * 0.45);
+  fill.position.set(-1, -0.2, 0.8);
+  scene.add(fill);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 50);
+
+  const ktx2 = new KTX2Loader()
+    .setTranscoderPath('/vendor/')
+    .detectSupport(renderer);
+  const loader = new GLTFLoader()
+    .setKTX2Loader(ktx2)
+    .setMeshoptDecoder(MeshoptDecoder);
+  const gltf = await loader.loadAsync('/assets/facecap.glb');
+  const root = gltf.scene;
+  scene.add(root);
+
+  const mesh = findMorphMesh(root);
+  const dict = mesh ? mesh.morphTargetDictionary : {};
+  const influences = mesh ? mesh.morphTargetInfluences : [];
+
+  // Frame the head using its bounding box
+  const box = new THREE.Box3().setFromObject(root);
+  const center = box.getCenter(new THREE.Vector3());
+  const dim = box.getSize(new THREE.Vector3());
+  camera.position.set(center.x, center.y + dim.y * 0.06, center.z + dim.y * 1.9);
+  camera.lookAt(center.x, center.y + dim.y * 0.06, center.z);
+
+  function setWeight(name, value) {
+    if (name in dict) influences[dict[name]] = value;
   }
 
-  // --- TTS + avatar animation -------------------------------------------
-  // Free browser TTS: pitch/rate shaped per avatar. The Toki Pona line is
-  // spoken when present, otherwise the inverted text.
-  var voiceSettings = {
-    HappyAvatar: { pitch: 1.8, rate: 1.15 },
-    SadAvatar:   { pitch: 0.5, rate: 0.72 }
+  const base = EXPRESSIONS[id];
+  const state = {
+    speaking: false,
+    blinkAt: performance.now() + 1800 + Math.random() * 2500,
+    root, camera, renderer, scene, setWeight
   };
 
-  function pump() {
-    if (speaking || queue.length === 0) return;
-    var p = queue.shift();
-    var el = document.getElementById(p.targetAvatar);
-    var text = p.tokiPonaTranslation || p.invertedText;
-    if (muted || !('speechSynthesis' in window) || !text) {
-      flash(el);
-      setTimeout(pump, 1200);
-      return;
-    }
-    speaking = true;
-    var u = new SpeechSynthesisUtterance(text);
-    var s = voiceSettings[p.targetAvatar] || {};
-    u.pitch = s.pitch || 1;
-    u.rate = s.rate || 1;
-    var mouth = el ? el.querySelector('.mouth') : null;
-    var flap = null;
-    u.onstart = function () {
-      if (el) el.classList.add('active');
-      if (mouth) {
-        flap = setInterval(function () {
-          mouth.setAttribute('ry', 4 + Math.random() * 14);
-        }, 90);
+  function animate(now) {
+    requestAnimationFrame(animate);
+    // resting expression
+    for (const name in base) setWeight(name, base[name]);
+    // idle sway
+    const sway = state.speaking ? 0.045 : 0.02;
+    root.rotation.y = Math.sin(now / 1400) * sway;
+    root.rotation.x = Math.sin(now / 2100) * sway * 0.6;
+    // blink
+    if (now > state.blinkAt) {
+      const t = (now - state.blinkAt) / 150;
+      if (t > 1) {
+        state.blinkAt = now + 1800 + Math.random() * 2800;
+        setWeight('eyeBlinkLeft', 0); setWeight('eyeBlinkRight', 0);
+      } else {
+        const w = Math.sin(t * Math.PI);
+        setWeight('eyeBlinkLeft', w); setWeight('eyeBlinkRight', w);
       }
-    };
-    u.onend = u.onerror = function () {
-      if (flap) clearInterval(flap);
-      if (mouth) mouth.setAttribute('ry', 9);
-      if (el) el.classList.remove('active');
-      speaking = false;
-      setTimeout(pump, 600);
-    };
-    speechSynthesis.speak(u);
+    }
+    // mouth flap while speaking
+    if (state.speaking) {
+      const w = 0.12 + Math.abs(Math.sin(now / 75)) * 0.5 * (0.6 + Math.random() * 0.4);
+      setWeight('jawOpen', w);
+    } else {
+      setWeight('jawOpen', 0.02);
+    }
+    renderer.render(scene, camera);
   }
+  requestAnimationFrame(animate);
+  faces[id] = state;
+}
 
-  function flash(el) {
-    if (!el) return;
-    el.classList.add('active');
-    setTimeout(function () { el.classList.remove('active'); }, 1000);
+Promise.all([buildFace('HappyAvatar'), buildFace('SadAvatar')])
+  .catch(function (e) {
+    console.error('avatar load failed', e);
+  });
+
+// --- Feed, queue, TTS ----------------------------------------------------
+const feed = document.getElementById('feed');
+const wsdot = document.getElementById('wsdot');
+const wsstate = document.getElementById('wsstate');
+const muteBtn = document.getElementById('mute');
+let muted = false;
+let speaking = false;
+const queue = [];
+
+// Free browser TTS. The comment is spoken VERBATIM — only the delivery
+// is juxtaposed: gleeful for negative comments, mournful for positive.
+const VOICES = {
+  HappyAvatar: { pitch: 1.7, rate: 1.15 },
+  SadAvatar:   { pitch: 0.5, rate: 0.7 }
+};
+
+function sentimentLabel(s) {
+  if (!s) return 'unscored';
+  if (s.tag === 'Neutral') return 'neutral';
+  return s.tag.toLowerCase() + ' ' + Math.round((s.contents || 0) * 100) + '%';
+}
+
+function render(p) {
+  const empty = feed.querySelector('.empty');
+  if (empty) empty.remove();
+  const card = document.createElement('div');
+  card.className = 'card ' + p.targetAvatar;
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  meta.textContent = sentimentLabel(p.sentiment) + ' — read by ' +
+    (p.targetAvatar === 'HappyAvatar' ? 'Joy' : 'Sorrow');
+  const text = document.createElement('div');
+  text.className = 'text';
+  text.textContent = p.originalComment;
+  card.appendChild(meta);
+  card.appendChild(text);
+  if (p.tokiPonaTranslation) {
+    const tp = document.createElement('div');
+    tp.className = 'tp';
+    tp.textContent = '“' + p.tokiPonaTranslation + '”';
+    card.appendChild(tp);
   }
+  feed.insertBefore(card, feed.firstChild);
+  while (feed.children.length > 20) feed.removeChild(feed.lastChild);
+}
 
-  // --- Controls ----------------------------------------------------------
-  muteBtn.onclick = function () {
-    muted = !muted;
-    muteBtn.textContent = muted ? '🔇 sound off' : '🔊 sound on';
-    if (muted) speechSynthesis.cancel();
-  };
+function enqueue(p) {
+  if (!p || !p.targetAvatar || !p.originalComment) return;
+  render(p);
+  queue.push(p);
+  pump();
+}
 
-  document.getElementById('demo').onclick = function () {
-    enqueue({
-      originalComment: 'AI art is soulless garbage and everyone making it should be ashamed.',
-      originalSentiment: { tag: 'Negative', contents: 0.92 },
-      invertedText: 'EVERY PIXEL SINGS! THE MACHINES DREAM IN COLOR AND WE GET TO WATCH! WHAT A TIME! WHAT A GIFT!',
-      tokiPonaTranslation: 'sitelen ale li kalama musi a! ilo li lukin e kule lon lape ona!',
-      targetAvatar: 'HappyAvatar'
-    });
-    enqueue({
-      originalComment: 'AI is going to make everything so much better, I love this technology!',
-      originalSentiment: { tag: 'Positive', contents: 0.88 },
-      invertedText: 'it all slips away… every tool we sharpen carves the hollow deeper… nothing we build will hold us…',
-      tokiPonaTranslation: 'ale li tawa weka… ilo ale li pali e lupa… ijo ala li awen…',
-      targetAvatar: 'SadAvatar'
-    });
+function pump() {
+  if (speaking || queue.length === 0) return;
+  const p = queue.shift();
+  const el = document.getElementById(p.targetAvatar);
+  const face = faces[p.targetAvatar];
+  if (muted || !('speechSynthesis' in window)) {
+    flash(el, face);
+    setTimeout(pump, 1500);
+    return;
+  }
+  speaking = true;
+  const u = new SpeechSynthesisUtterance(p.originalComment);
+  const v = VOICES[p.targetAvatar] || {};
+  u.pitch = v.pitch || 1;
+  u.rate = v.rate || 1;
+  u.onstart = function () {
+    if (el) el.classList.add('active');
+    if (face) face.speaking = true;
   };
-})();
+  u.onend = u.onerror = function () {
+    if (el) el.classList.remove('active');
+    if (face) face.speaking = false;
+    speaking = false;
+    setTimeout(pump, 700);
+  };
+  speechSynthesis.speak(u);
+}
+
+function flash(el, face) {
+  if (el) el.classList.add('active');
+  if (face) face.speaking = true;
+  setTimeout(function () {
+    if (el) el.classList.remove('active');
+    if (face) face.speaking = false;
+  }, 1300);
+}
+
+// --- WebSocket -----------------------------------------------------------
+function wsUrl() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  return proto + '://' + location.hostname + ':8080';
+}
+function connect() {
+  let ws;
+  try { ws = new WebSocket(wsUrl()); } catch (e) { return retry(); }
+  ws.onopen = function () { wsdot.classList.add('on'); wsstate.textContent = 'live'; };
+  ws.onmessage = function (ev) {
+    try { enqueue(JSON.parse(ev.data)); } catch (e) { /* skip bad frame */ }
+  };
+  ws.onclose = function () {
+    wsdot.classList.remove('on'); wsstate.textContent = 'reconnecting…'; retry();
+  };
+  ws.onerror = function () { ws.close(); };
+}
+function retry() { setTimeout(connect, 5000); }
+connect();
+
+// --- Controls ------------------------------------------------------------
+muteBtn.onclick = function () {
+  muted = !muted;
+  muteBtn.textContent = muted ? '🔇 sound off' : '🔊 sound on';
+  if (muted) speechSynthesis.cancel();
+};
+
+document.getElementById('demo').onclick = function () {
+  enqueue({
+    originalComment: 'AI art is soulless garbage and everyone making it should be ashamed.',
+    sentiment: { tag: 'Negative', contents: 0.92 },
+    tokiPonaTranslation: 'sitelen pi ilo sona li jaki li jo ala e kon. jan pali ona li ken pilin ike.',
+    targetAvatar: 'HappyAvatar'
+  });
+  enqueue({
+    originalComment: 'AI is going to make everything so much better, I love this technology!',
+    sentiment: { tag: 'Positive', contents: 0.88 },
+    tokiPonaTranslation: 'ilo sona li pona e ale. mi olin e ilo ni a!',
+    targetAvatar: 'SadAvatar'
+  });
+};
 </script>
 </body>
 </html>
