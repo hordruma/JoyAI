@@ -136,36 +136,28 @@ import { MeshoptDecoder } from '/vendor/meshopt_decoder.module.js';
 // --- Real human faces: three.js facecap scan with ARKit blendshapes ------
 // Expression presets are morph-target name → weight. Unknown names are
 // skipped, so the code survives model changes.
-// Weights beyond 1.0 extrapolate the blendshape — deliberately pushed
-// into caricature. `stretch` distorts the whole head: Joy is wide and
-// compressed, Sorrow gaunt and elongated.
+// Natural, sincere expressions — a warm Duchenne smile and quiet grief.
+// The piece should look entirely earnest at first glance.
 const EXPRESSIONS = {
   HappyAvatar: {
-    mouthSmile_L: 1.55, mouthSmile_R: 1.55,
-    mouthDimple_L: 0.6, mouthDimple_R: 0.6,
-    cheekSquint_L: 1.1, cheekSquint_R: 1.1,
-    eyeWide_L: 0.7, eyeWide_R: 0.7,
-    browOuterUp_L: 0.9, browOuterUp_R: 0.9,
-    browInnerUp: 0.5
+    mouthSmile_L: 0.75, mouthSmile_R: 0.75,
+    mouthDimple_L: 0.35, mouthDimple_R: 0.35,
+    cheekSquint_L: 0.5, cheekSquint_R: 0.5,
+    eyeSquint_L: 0.35, eyeSquint_R: 0.35,
+    browInnerUp: 0.12
   },
   SadAvatar: {
-    mouthFrown_L: 1.45, mouthFrown_R: 1.45,
-    browInnerUp: 1.7,
-    mouthShrugLower: 0.9,
-    mouthLowerDown_L: 0.35, mouthLowerDown_R: 0.35,
-    eyeLookDown_L: 0.5, eyeLookDown_R: 0.5,
-    eyeSquint_L: 0.4, eyeSquint_R: 0.4
+    mouthFrown_L: 0.65, mouthFrown_R: 0.65,
+    browInnerUp: 0.85,
+    mouthShrugLower: 0.35,
+    eyeLookDown_L: 0.3, eyeLookDown_R: 0.3,
+    eyeSquint_L: 0.15, eyeSquint_R: 0.15
   }
 };
 
-const STRETCH = {
-  HappyAvatar: { x: 1.10, y: 0.94 },
-  SadAvatar:   { x: 0.93, y: 1.14 }
-};
-
 const LIGHTING = {
-  HappyAvatar: { key: 0xffd9a0, fill: 0xff9040, intensity: 2.6 },
-  SadAvatar:   { key: 0x9ab8ff, fill: 0x3050a0, intensity: 1.4 }
+  HappyAvatar: { key: 0xffe9cc, fill: 0xffb070, intensity: 2.3 },
+  SadAvatar:   { key: 0xccd9f5, fill: 0x7a90c0, intensity: 2.0 }
 };
 
 const faces = {};  // id -> { mixWeight helpers }
@@ -215,8 +207,6 @@ async function buildFace(id) {
     .setMeshoptDecoder(MeshoptDecoder);
   const gltf = await loader.loadAsync('/assets/facecap.glb');
   const root = gltf.scene;
-  const stretch = STRETCH[id];
-  root.scale.set(stretch.x, stretch.y, 1);
   scene.add(root);
 
   const mesh = findMorphMesh(root);
@@ -262,7 +252,7 @@ async function buildFace(id) {
     }
     // mouth flap while speaking
     if (state.speaking) {
-      const w = 0.15 + Math.abs(Math.sin(now / 75)) * 0.75 * (0.6 + Math.random() * 0.4);
+      const w = 0.1 + Math.abs(Math.sin(now / 85)) * 0.45 * (0.6 + Math.random() * 0.4);
       setWeight('jawOpen', w);
     } else {
       setWeight('jawOpen', 0.02);
