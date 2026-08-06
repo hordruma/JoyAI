@@ -1,0 +1,49 @@
+cabal-version:      2.4
+name:               sadclown-pipeline
+version:            0.1.0.0
+synopsis:           Sentiment-inverting Toki Pona commentary pipeline for JoyAI
+description:
+  A purely functional Haskell backend that ingests internet commentary
+  about generative AI via Tavily, inverts its sentiment through an LLM
+  engine (with Toki Pona translation), and streams structured payloads
+  over WebSockets to a dual-avatar frontend.
+license:            WTFPL
+license-file:       LICENSE
+author:             JoyAI
+maintainer:         JoyAI
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall
+  default-language: Haskell2010
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:
+    Types
+    Logic
+    Network.Tavily
+    Network.LLM
+  build-depends:
+      base >=4.14 && <5
+    , aeson
+    , bytestring
+    , http-client
+    , http-conduit
+    , mtl
+    , text
+
+executable sadclown-pipeline
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.14 && <5
+    , aeson
+    , mtl
+    , sadclown-pipeline
+    , scotty
+    , text
+    , websockets
