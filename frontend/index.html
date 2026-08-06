@@ -61,11 +61,8 @@
   }
   .avatar.active figcaption { color: var(--ink); }
   .column {
-    width: 100%; height: 46vh; overflow: hidden; margin-top: 1.1rem;
-    display: flex; flex-direction: column; justify-content: flex-end;
-    gap: 0.8rem;
-    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18%);
-    mask-image: linear-gradient(to bottom, transparent, #000 18%);
+    width: 100%; margin-top: 1.1rem;
+    display: flex; flex-direction: column; gap: 0.8rem;
   }
   .card {
     background: var(--card); border-radius: 12px; padding: 0.85rem 1rem;
@@ -89,7 +86,6 @@
   @media (max-width: 640px) {
     .stage { gap: 3vw; }
     .side.offset .column { margin-top: 3rem; }
-    .column { height: 38vh; }
   }
 </style>
 <script type="importmap">
@@ -313,7 +309,7 @@ function appendCard(p) {
     card.appendChild(trans);
   }
   col.appendChild(card);
-  while (col.children.length > 6) col.removeChild(col.firstChild);
+  while (col.children.length > 4) col.removeChild(col.firstChild);
   return card;
 }
 
