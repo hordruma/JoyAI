@@ -24,7 +24,7 @@ import System.Exit              (exitFailure)
 import System.IO                (hPutStrLn, stderr)
 import Web.Scotty               (get, json, scotty)
 
-import Network.LLM    (invertComment)
+import Network.LLM    (LLMConfig (..), invertComment)
 import Network.Tavily (fetchComments)
 import Types
 
@@ -43,15 +43,32 @@ pollIntervalSeconds = 60
 searchQuery :: Text
 searchQuery = "generative AI controversy opinions comments"
 
+-- | Default to GLM (Z.ai) — the cheapest usable tier for this workload.
+-- Point LLM_BASE_URL/LLM_MODEL at Kimi (Moonshot), DeepSeek, OpenRouter,
+-- or any other OpenAI-compatible endpoint to switch providers.
+defaultLLMEndpoint :: Text
+defaultLLMEndpoint = "https://api.z.ai/api/paas/v4/chat/completions"
+
+defaultLLMModel :: Text
+defaultLLMModel = "glm-4.5-air"
+
 main :: IO ()
 main = do
-  tavilyKey    <- requireEnv "TAVILY_API_KEY"
-  anthropicKey <- requireEnv "ANTHROPIC_API_KEY"
-  clients      <- newMVar []
-  nextId       <- newMVar (0 :: Int)
+  tavilyKey <- requireEnv "TAVILY_API_KEY"
+  llmKey    <- requireEnv "LLM_API_KEY"
+  endpoint  <- envOrDefault "LLM_BASE_URL" defaultLLMEndpoint
+  model     <- envOrDefault "LLM_MODEL" defaultLLMModel
+  let llmConfig = LLMConfig
+        { llmEndpoint = endpoint
+        , llmApiKey   = llmKey
+        , llmModel    = model
+        }
+  clients <- newMVar []
+  nextId  <- newMVar (0 :: Int)
   void . forkIO $ scotty healthPort $
     get "/health" $ json (Aeson.object ["status" Aeson..= ("ok" :: Text)])
-  void . forkIO $ pipelineLoop tavilyKey anthropicKey clients
+  void . forkIO $ pipelineLoop tavilyKey llmConfig clients
+  logLine ("LLM engine: " <> model <> " @ " <> endpoint)
   logLine ("WebSocket broadcast server listening on port " <> T.pack (show wsPort))
   WS.runServer "0.0.0.0" wsPort (serveClient clients nextId)
 
@@ -63,6 +80,13 @@ requireEnv name = do
     _ -> do
       hPutStrLn stderr ("Missing required environment variable: " <> name)
       exitFailure
+
+envOrDefault :: String -> Text -> IO Text
+envOrDefault name fallback = do
+  value <- lookupEnv name
+  pure $ case value of
+    Just v | not (null v) -> T.pack v
+    _                     -> fallback
 
 -- | Register a client and hold the connection open until it drops.
 serveClient :: Clients -> MVar Int -> WS.ServerApp
@@ -82,15 +106,15 @@ serveClient clients nextId pending = do
 
 -- | The ingest → invert → broadcast event loop. Errors are logged and
 -- the loop continues; nothing here can kill the WebSocket server.
-pipelineLoop :: Text -> Text -> Clients -> IO ()
-pipelineLoop tavilyKey anthropicKey clients = forever $ do
+pipelineLoop :: Text -> LLMConfig -> Clients -> IO ()
+pipelineLoop tavilyKey llmConfig clients = forever $ do
   result <- runExceptT (fetchComments tavilyKey searchQuery)
   case result of
     Left err -> logLine ("Ingest failed: " <> T.pack (show err))
     Right comments -> do
       when (null comments) (logLine "Ingest returned no usable comments")
       forM_ (take 5 comments) $ \comment -> do
-        processed <- runExceptT (invertComment anthropicKey comment)
+        processed <- runExceptT (invertComment llmConfig comment)
         case processed of
           Left err      -> logLine ("Inversion failed: " <> T.pack (show err))
           Right payload -> broadcast clients payload

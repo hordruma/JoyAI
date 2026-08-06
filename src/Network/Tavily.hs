@@ -8,6 +8,7 @@ module Network.Tavily
   ( fetchComments
   , cleanText
   , httpOrThrow
+  , parseRequestSafe
   ) where
 
 import Control.Exception      (try)

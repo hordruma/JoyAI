@@ -5,8 +5,9 @@ An Art Project
 
 A purely functional Haskell backend that ingests internet commentary about
 generative AI (via Tavily), inverts its sentiment through an LLM engine
-(Claude), translates the inversion into Toki Pona, and streams structured
-payloads over WebSockets to a dual-avatar frontend:
+(GLM by default; any OpenAI-compatible API works), translates the inversion
+into Toki Pona, and streams structured payloads over WebSockets to a
+dual-avatar frontend:
 
 - **Anti-AI / negative comments** → inverted to manic, hyper-joyful text,
   read by the **Happy Avatar** in a cheerful voice.
@@ -21,7 +22,7 @@ payloads over WebSockets to a dual-avatar frontend:
 │ Haskell backend (IO / exceptional bounds)  │
 │  1. Ingest via http-conduit                │
 │  2. Parse strictly into Aeson ADTs         │
-│  3. LLM inversion + Toki Pona (Claude API) │
+│  3. LLM inversion + Toki Pona (GLM/Kimi/…) │
 │  4. Pure monadic inversion (Logic.hs)      │
 │  5. Serialize InvertedPayload to JSON      │
 └────────────────────────────────────────────┘
@@ -37,7 +38,7 @@ payloads over WebSockets to a dual-avatar frontend:
 | `src/Types.hs` | Algebraic data types (`SentimentScore`, `AvatarTarget`, `InvertedPayload`) with generic Aeson instances |
 | `src/Logic.hs` | Pure logic core — sentiment inversion routing, no IO imports |
 | `src/Network/Tavily.hs` | Tavily search ingestion + HTML/URL scrubbing, errors in `ExceptT` |
-| `src/Network/LLM.hs` | LLM inversion engine (Claude Messages API, JSON-schema structured output) |
+| `src/Network/LLM.hs` | LLM inversion engine (OpenAI-compatible chat completions, JSON-object mode) |
 | `app/Main.hs` | WebSocket broadcast server (port 8080), health endpoint (port 8081), polling event loop |
 
 ### Building
@@ -50,8 +51,25 @@ cabal build
 
 ```sh
 export TAVILY_API_KEY=tvly-...
-export ANTHROPIC_API_KEY=sk-ant-...
+export LLM_API_KEY=...          # key for your chat-completions provider
 cabal run sadclown-pipeline
+```
+
+By default the pipeline talks to GLM (Z.ai) with `glm-4.5-air` — the
+cheapest tier that handles this workload well. Any OpenAI-compatible
+provider can be swapped in via environment variables:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `LLM_API_KEY` | *(required)* | Bearer token for the provider |
+| `LLM_BASE_URL` | `https://api.z.ai/api/paas/v4/chat/completions` | Full chat-completions URL |
+| `LLM_MODEL` | `glm-4.5-air` | e.g. `glm-4-flash` (free tier) |
+
+Using Kimi (Moonshot) instead:
+
+```sh
+export LLM_BASE_URL=https://api.moonshot.ai/v1/chat/completions
+export LLM_MODEL=kimi-k2-0905-preview
 ```
 
 The server broadcasts one JSON frame per processed comment to every
