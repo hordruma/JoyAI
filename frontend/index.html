@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SadClown — JoyAI</title>
+<style>
+  :root {
+    --bg: #12101a;
+    --card: #1e1a2b;
+    --ink: #efeaf7;
+    --muted: #9a92b0;
+    --happy: #ffb020;
+    --sad: #5aa0ff;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: radial-gradient(ellipse at 50% -20%, #2a2440 0%, var(--bg) 60%);
+    color: var(--ink);
+    font-family: Georgia, 'Times New Roman', serif;
+    min-height: 100vh;
+    padding: 2rem 1rem 4rem;
+  }
+  header { text-align: center; margin-bottom: 1.5rem; }
+  h1 { font-size: 2rem; letter-spacing: 0.06em; }
+  h1 em { color: var(--happy); font-style: italic; }
+  h1 .sad { color: var(--sad); }
+  .tagline { color: var(--muted); font-size: 0.95rem; margin-top: 0.3rem; }
+  .statusbar {
+    display: flex; justify-content: center; gap: 1rem; align-items: center;
+    margin: 1rem 0; font-size: 0.85rem; color: var(--muted);
+    font-family: ui-monospace, monospace;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #d04040; display: inline-block; }
+  .dot.on { background: #40d080; }
+  button {
+    background: transparent; color: var(--ink); border: 1px solid var(--muted);
+    border-radius: 999px; padding: 0.35rem 1rem; font: inherit; font-size: 0.85rem;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--ink); }
+  .stage {
+    display: flex; justify-content: center; gap: 4vw; align-items: flex-end;
+    margin: 1rem auto 2rem; max-width: 900px;
+  }
+  .avatar {
+    width: min(38vw, 300px); text-align: center;
+    filter: grayscale(0.55) brightness(0.6);
+    transition: filter 0.4s, transform 0.4s;
+  }
+  .avatar.active {
+    filter: none; transform: scale(1.06);
+  }
+  .avatar figcaption {
+    margin-top: 0.5rem; color: var(--muted); font-size: 0.85rem;
+    font-family: ui-monospace, monospace;
+  }
+  .avatar.active figcaption { color: var(--ink); }
+  .feed { max-width: 700px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.8rem; }
+  .card {
+    background: var(--card); border-radius: 12px; padding: 1rem 1.2rem;
+    border-left: 4px solid var(--muted);
+  }
+  .card.HappyAvatar { border-left-color: var(--happy); }
+  .card.SadAvatar { border-left-color: var(--sad); }
+  .card .orig { color: var(--muted); font-size: 0.85rem; text-decoration: line-through; }
+  .card .inv { margin: 0.4rem 0; font-size: 1.05rem; }
+  .card .tp { color: var(--happy); font-style: italic; font-size: 0.95rem; }
+  .card.SadAvatar .tp { color: var(--sad); }
+  .empty { text-align: center; color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1><em>Happy</em> / <span class="sad">Sad</span> Clown</h1>
+  <div class="tagline">every opinion about AI, inverted, in Toki Pona</div>
+</header>
+
+<div class="statusbar">
+  <span><span id="wsdot" class="dot"></span> <span id="wsstate">connecting…</span></span>
+  <button id="demo">play demo payload</button>
+  <button id="mute">🔊 sound on</button>
+</div>
+
+<div class="stage">
+  <figure class="avatar" id="HappyAvatar">
+    <svg viewBox="0 0 200 210" aria-label="Happy clown">
+      <ellipse cx="100" cy="115" rx="72" ry="80" fill="#fce9d6"/>
+      <circle cx="45" cy="80" r="22" fill="#ff5a5a"/>
+      <circle cx="155" cy="80" r="22" fill="#5ad0ff"/>
+      <circle cx="70" cy="48" r="18" fill="#ffd23f"/>
+      <circle cx="130" cy="48" r="18" fill="#7dff6a"/>
+      <circle cx="100" cy="36" r="16" fill="#ff8ae0"/>
+      <circle cx="72" cy="105" r="9" fill="#221"/>
+      <circle cx="128" cy="105" r="9" fill="#221"/>
+      <path d="M55 98 Q72 84 89 98" stroke="#221" stroke-width="4" fill="none"/>
+      <path d="M111 98 Q128 84 145 98" stroke="#221" stroke-width="4" fill="none"/>
+      <circle cx="100" cy="130" r="15" fill="#e33"/>
+      <ellipse class="mouth" cx="100" cy="165" rx="34" ry="10" fill="#a12"/>
+      <path d="M66 165 Q100 195 134 165" stroke="#221" stroke-width="4" fill="none"/>
+    </svg>
+    <figcaption>HAPPY — reads the haters</figcaption>
+  </figure>
+
+  <figure class="avatar" id="SadAvatar">
+    <svg viewBox="0 0 200 210" aria-label="Sad clown">
+      <ellipse cx="100" cy="115" rx="72" ry="80" fill="#e7e2f2"/>
+      <path d="M30 55 Q60 20 100 26 Q140 20 170 55 L160 70 Q100 45 40 70 Z" fill="#3b3560"/>
+      <circle cx="72" cy="108" r="8" fill="#221"/>
+      <circle cx="128" cy="108" r="8" fill="#221"/>
+      <path d="M55 96 Q72 104 89 94" stroke="#221" stroke-width="4" fill="none"/>
+      <path d="M111 94 Q128 104 145 96" stroke="#221" stroke-width="4" fill="none"/>
+      <path d="M72 120 q6 16 0 26 q-10 -4 -6 -18 Z" fill="#5aa0ff"/>
+      <circle cx="100" cy="132" r="14" fill="#7a5aff"/>
+      <ellipse class="mouth" cx="100" cy="172" rx="26" ry="8" fill="#425"/>
+      <path d="M70 182 Q100 158 130 182" stroke="#221" stroke-width="4" fill="none"/>
+    </svg>
+    <figcaption>SAD — reads the believers</figcaption>
+  </figure>
+</div>
+
+<div class="feed" id="feed">
+  <div class="empty">waiting for inverted opinions…</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var feed = document.getElementById('feed');
+  var wsdot = document.getElementById('wsdot');
+  var wsstate = document.getElementById('wsstate');
+  var muteBtn = document.getElementById('mute');
+  var muted = false;
+  var queue = [];
+  var speaking = false;
+
+  // --- WebSocket ---------------------------------------------------------
+  function wsUrl() {
+    var proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    return proto + '://' + location.hostname + ':8080';
+  }
+
+  function connect() {
+    var ws;
+    try { ws = new WebSocket(wsUrl()); } catch (e) { return retry(); }
+    ws.onopen = function () {
+      wsdot.classList.add('on');
+      wsstate.textContent = 'live';
+    };
+    ws.onmessage = function (ev) {
+      try { enqueue(JSON.parse(ev.data)); } catch (e) { /* skip bad frame */ }
+    };
+    ws.onclose = function () {
+      wsdot.classList.remove('on');
+      wsstate.textContent = 'reconnecting…';
+      retry();
+    };
+    ws.onerror = function () { ws.close(); };
+  }
+  function retry() { setTimeout(connect, 5000); }
+  connect();
+
+  // --- Queue + render ----------------------------------------------------
+  function enqueue(payload) {
+    if (!payload || !payload.targetAvatar) return;
+    render(payload);
+    queue.push(payload);
+    pump();
+  }
+
+  function render(p) {
+    var empty = feed.querySelector('.empty');
+    if (empty) empty.remove();
+    var card = document.createElement('div');
+    card.className = 'card ' + p.targetAvatar;
+    var orig = document.createElement('div');
+    orig.className = 'orig';
+    orig.textContent = p.originalComment;
+    var inv = document.createElement('div');
+    inv.className = 'inv';
+    inv.textContent = p.invertedText;
+    card.appendChild(orig);
+    card.appendChild(inv);
+    if (p.tokiPonaTranslation) {
+      var tp = document.createElement('div');
+      tp.className = 'tp';
+      tp.textContent = '“' + p.tokiPonaTranslation + '”';
+      card.appendChild(tp);
+    }
+    feed.insertBefore(card, feed.firstChild);
+    while (feed.children.length > 20) feed.removeChild(feed.lastChild);
+  }
+
+  // --- TTS + avatar animation -------------------------------------------
+  // Free browser TTS: pitch/rate shaped per avatar. The Toki Pona line is
+  // spoken when present, otherwise the inverted text.
+  var voiceSettings = {
+    HappyAvatar: { pitch: 1.8, rate: 1.15 },
+    SadAvatar:   { pitch: 0.5, rate: 0.72 }
+  };
+
+  function pump() {
+    if (speaking || queue.length === 0) return;
+    var p = queue.shift();
+    var el = document.getElementById(p.targetAvatar);
+    var text = p.tokiPonaTranslation || p.invertedText;
+    if (muted || !('speechSynthesis' in window) || !text) {
+      flash(el);
+      setTimeout(pump, 1200);
+      return;
+    }
+    speaking = true;
+    var u = new SpeechSynthesisUtterance(text);
+    var s = voiceSettings[p.targetAvatar] || {};
+    u.pitch = s.pitch || 1;
+    u.rate = s.rate || 1;
+    var mouth = el ? el.querySelector('.mouth') : null;
+    var flap = null;
+    u.onstart = function () {
+      if (el) el.classList.add('active');
+      if (mouth) {
+        flap = setInterval(function () {
+          mouth.setAttribute('ry', 4 + Math.random() * 14);
+        }, 90);
+      }
+    };
+    u.onend = u.onerror = function () {
+      if (flap) clearInterval(flap);
+      if (mouth) mouth.setAttribute('ry', 9);
+      if (el) el.classList.remove('active');
+      speaking = false;
+      setTimeout(pump, 600);
+    };
+    speechSynthesis.speak(u);
+  }
+
+  function flash(el) {
+    if (!el) return;
+    el.classList.add('active');
+    setTimeout(function () { el.classList.remove('active'); }, 1000);
+  }
+
+  // --- Controls ----------------------------------------------------------
+  muteBtn.onclick = function () {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇 sound off' : '🔊 sound on';
+    if (muted) speechSynthesis.cancel();
+  };
+
+  document.getElementById('demo').onclick = function () {
+    enqueue({
+      originalComment: 'AI art is soulless garbage and everyone making it should be ashamed.',
+      originalSentiment: { tag: 'Negative', contents: 0.92 },
+      invertedText: 'EVERY PIXEL SINGS! THE MACHINES DREAM IN COLOR AND WE GET TO WATCH! WHAT A TIME! WHAT A GIFT!',
+      tokiPonaTranslation: 'sitelen ale li kalama musi a! ilo li lukin e kule lon lape ona!',
+      targetAvatar: 'HappyAvatar'
+    });
+    enqueue({
+      originalComment: 'AI is going to make everything so much better, I love this technology!',
+      originalSentiment: { tag: 'Positive', contents: 0.88 },
+      invertedText: 'it all slips away… every tool we sharpen carves the hollow deeper… nothing we build will hold us…',
+      tokiPonaTranslation: 'ale li tawa weka… ilo ale li pali e lupa… ijo ala li awen…',
+      targetAvatar: 'SadAvatar'
+    });
+  };
+})();
+</script>
+</body>
+</html>

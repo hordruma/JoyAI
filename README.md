@@ -39,7 +39,8 @@ dual-avatar frontend:
 | `src/Logic.hs` | Pure logic core — sentiment inversion routing, no IO imports |
 | `src/Network/Tavily.hs` | Tavily search ingestion + HTML/URL scrubbing, errors in `ExceptT` |
 | `src/Network/LLM.hs` | LLM inversion engine (OpenAI-compatible chat completions, JSON-object mode) |
-| `app/Main.hs` | WebSocket broadcast server (port 8080), health endpoint (port 8081), polling event loop |
+| `app/Main.hs` | WebSocket broadcast server (port 8080), frontend + health endpoint (port 8081), polling event loop |
+| `frontend/index.html` | Dual-avatar GUI: SVG clowns, browser TTS, live WebSocket feed |
 
 ### Building
 
@@ -84,6 +85,39 @@ connected WebSocket client:
   "targetAvatar": "HappyAvatar"
 }
 ```
+
+### Frontend
+
+Open <http://localhost:8081/> — the server hosts a self-contained page with
+both clown avatars. It connects to the WebSocket feed on port 8080,
+displays each payload, and speaks the Toki Pona line using the free
+browser **Web Speech API** (high pitch + fast rate for the Happy avatar,
+low pitch + slow rate for the Sad avatar), with mouth-flap animation while
+speaking. A **“play demo payload”** button injects sample payloads so the
+GUI can be tested with no backend keys at all.
+
+If browser voices are too inconsistent for the installation, the free
+self-hosted upgrade path is [Piper TTS](https://github.com/rhasspy/piper)
+(MIT-licensed, CPU-only): synthesize server-side and stream audio URLs in
+the payload.
+
+### Deploying
+
+```sh
+docker build -t sadclown .
+docker run -p 8080:8080 -p 8081:8081 \
+  -e TAVILY_API_KEY=... -e LLM_API_KEY=... sadclown
+```
+
+Any container host works (Fly.io, Railway, Render, a $0 Oracle free-tier
+VM). Two notes for public deployment:
+
+- If the frontend is served over HTTPS, browsers require the WebSocket to
+  be `wss://` — put a TLS-terminating proxy (Caddy/nginx/host router) in
+  front of port 8080, or expose both ports through the same proxy.
+- The page derives the WebSocket URL from its own hostname, so no
+  configuration is needed as long as port 8080 is reachable on the same
+  host.
 
 ### Safety constraints
 

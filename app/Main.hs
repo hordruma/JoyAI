@@ -22,7 +22,7 @@ import qualified Network.WebSockets as WS
 import System.Environment       (lookupEnv)
 import System.Exit              (exitFailure)
 import System.IO                (hPutStrLn, stderr)
-import Web.Scotty               (get, json, scotty)
+import Web.Scotty               (file, get, json, scotty, setHeader)
 
 import Network.LLM    (LLMConfig (..), invertComment)
 import Network.Tavily (fetchComments)
@@ -65,8 +65,11 @@ main = do
         }
   clients <- newMVar []
   nextId  <- newMVar (0 :: Int)
-  void . forkIO $ scotty healthPort $
+  void . forkIO $ scotty healthPort $ do
     get "/health" $ json (Aeson.object ["status" Aeson..= ("ok" :: Text)])
+    get "/" $ do
+      setHeader "Content-Type" "text/html; charset=utf-8"
+      file "frontend/index.html"
   void . forkIO $ pipelineLoop tavilyKey llmConfig clients
   logLine ("LLM engine: " <> model <> " @ " <> endpoint)
   logLine ("WebSocket broadcast server listening on port " <> T.pack (show wsPort))
