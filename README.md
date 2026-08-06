@@ -55,7 +55,7 @@ export LLM_API_KEY=...          # key for your chat-completions provider
 cabal run joyai
 ```
 
-Then open <http://localhost:8081/>. A **"play demo payload"** button
+Then open <http://localhost:8081/>. A **"rehearsal"** button
 injects sample payloads so the GUI (faces, voices, feed) can be tested
 with no API keys at all.
 

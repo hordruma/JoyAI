@@ -83,10 +83,6 @@
   .card.speaking.SadAvatar   { box-shadow: 0 0 18px rgba(90, 160, 255, 0.25); }
   .card.HappyAvatar { border-left-color: var(--warm); }
   .card.SadAvatar { border-left-color: var(--cool); }
-  .card .meta {
-    color: var(--muted); font-size: 0.75rem; font-family: ui-monospace, monospace;
-    margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.08em;
-  }
   .card .text { font-size: 0.98rem; }
   .card .trans { color: var(--muted); font-style: italic; font-size: 0.92rem; margin-top: 0.4rem; }
   .hint { text-align: center; color: var(--muted); font-style: italic; margin-top: 1rem; }
@@ -103,12 +99,12 @@
 <body>
 <header>
   <h1>JOY&thinsp;AI</h1>
-  <div class="tagline">every opinion about AI, read aloud in the wrong voice</div>
+  <div class="tagline">a duet</div>
 </header>
 
 <div class="statusbar">
   <span><span id="wsdot" class="dot"></span> <span id="wsstate">connecting…</span></span>
-  <button id="demo">play demo payload</button>
+  <button id="demo">rehearsal</button>
   <button id="mute">🔊 sound on</button>
 </div>
 
@@ -116,20 +112,20 @@
   <div class="side">
     <figure class="avatar" id="HappyAvatar">
       <div class="viewport"></div>
-      <figcaption>JOY — reads the hate, beaming</figcaption>
+      <figcaption>JOY</figcaption>
     </figure>
     <div class="column" id="col-HappyAvatar"></div>
   </div>
   <div class="side offset">
     <figure class="avatar" id="SadAvatar">
       <div class="viewport"></div>
-      <figcaption>SORROW — reads the praise, grieving</figcaption>
+      <figcaption>SORROW</figcaption>
     </figure>
     <div class="column" id="col-SadAvatar"></div>
   </div>
 </div>
 
-<div class="hint" id="hint">waiting for opinions…</div>
+<div class="hint" id="hint">listening…</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -140,19 +136,31 @@ import { MeshoptDecoder } from '/vendor/meshopt_decoder.module.js';
 // --- Real human faces: three.js facecap scan with ARKit blendshapes ------
 // Expression presets are morph-target name → weight. Unknown names are
 // skipped, so the code survives model changes.
+// Weights beyond 1.0 extrapolate the blendshape — deliberately pushed
+// into caricature. `stretch` distorts the whole head: Joy is wide and
+// compressed, Sorrow gaunt and elongated.
 const EXPRESSIONS = {
   HappyAvatar: {
-    mouthSmileLeft: 0.95, mouthSmileRight: 0.95,
-    cheekSquintLeft: 0.6, cheekSquintRight: 0.6,
-    eyeSquintLeft: 0.35, eyeSquintRight: 0.35,
-    browInnerUp: 0.25
+    mouthSmile_L: 1.55, mouthSmile_R: 1.55,
+    mouthDimple_L: 0.6, mouthDimple_R: 0.6,
+    cheekSquint_L: 1.1, cheekSquint_R: 1.1,
+    eyeWide_L: 0.7, eyeWide_R: 0.7,
+    browOuterUp_L: 0.9, browOuterUp_R: 0.9,
+    browInnerUp: 0.5
   },
   SadAvatar: {
-    mouthFrownLeft: 0.9, mouthFrownRight: 0.9,
-    browInnerUp: 1.0,
-    mouthShrugLower: 0.4,
-    eyeLookDownLeft: 0.25, eyeLookDownRight: 0.25
+    mouthFrown_L: 1.45, mouthFrown_R: 1.45,
+    browInnerUp: 1.7,
+    mouthShrugLower: 0.9,
+    mouthLowerDown_L: 0.35, mouthLowerDown_R: 0.35,
+    eyeLookDown_L: 0.5, eyeLookDown_R: 0.5,
+    eyeSquint_L: 0.4, eyeSquint_R: 0.4
   }
+};
+
+const STRETCH = {
+  HappyAvatar: { x: 1.10, y: 0.94 },
+  SadAvatar:   { x: 0.93, y: 1.14 }
 };
 
 const LIGHTING = {
@@ -207,6 +215,8 @@ async function buildFace(id) {
     .setMeshoptDecoder(MeshoptDecoder);
   const gltf = await loader.loadAsync('/assets/facecap.glb');
   const root = gltf.scene;
+  const stretch = STRETCH[id];
+  root.scale.set(stretch.x, stretch.y, 1);
   scene.add(root);
 
   const mesh = findMorphMesh(root);
@@ -244,15 +254,15 @@ async function buildFace(id) {
       const t = (now - state.blinkAt) / 150;
       if (t > 1) {
         state.blinkAt = now + 1800 + Math.random() * 2800;
-        setWeight('eyeBlinkLeft', 0); setWeight('eyeBlinkRight', 0);
+        setWeight('eyeBlink_L', 0); setWeight('eyeBlink_R', 0);
       } else {
         const w = Math.sin(t * Math.PI);
-        setWeight('eyeBlinkLeft', w); setWeight('eyeBlinkRight', w);
+        setWeight('eyeBlink_L', w); setWeight('eyeBlink_R', w);
       }
     }
     // mouth flap while speaking
     if (state.speaking) {
-      const w = 0.12 + Math.abs(Math.sin(now / 75)) * 0.5 * (0.6 + Math.random() * 0.4);
+      const w = 0.15 + Math.abs(Math.sin(now / 75)) * 0.75 * (0.6 + Math.random() * 0.4);
       setWeight('jawOpen', w);
     } else {
       setWeight('jawOpen', 0.02);
@@ -295,12 +305,6 @@ const VOICES = {
   SadAvatar:   { pitch: 0.5, rate: 0.7 }
 };
 
-function sentimentLabel(s) {
-  if (!s) return 'unscored';
-  if (s.tag === 'Neutral') return 'neutral';
-  return s.tag.toLowerCase() + ' ' + Math.round((s.contents || 0) * 100) + '%';
-}
-
 // Cards are revealed only when their face starts reading them — one by
 // one, rising into that avatar's column from the bottom.
 function appendCard(p) {
@@ -308,19 +312,14 @@ function appendCard(p) {
   const col = document.getElementById('col-' + p.targetAvatar);
   const card = document.createElement('div');
   card.className = 'card ' + p.targetAvatar;
-  const meta = document.createElement('div');
-  meta.className = 'meta';
-  meta.textContent = sentimentLabel(p.sentiment) + ' — read by ' +
-    (p.targetAvatar === 'HappyAvatar' ? 'Joy' : 'Sorrow');
   const text = document.createElement('div');
   text.className = 'text';
   text.textContent = p.originalComment;
-  card.appendChild(meta);
   card.appendChild(text);
   if (p.englishTranslation) {
     const trans = document.createElement('div');
     trans.className = 'trans';
-    trans.textContent = 'translated: “' + p.englishTranslation + '”';
+    trans.textContent = '“' + p.englishTranslation + '”';
     card.appendChild(trans);
   }
   col.appendChild(card);
