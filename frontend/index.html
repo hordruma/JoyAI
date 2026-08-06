@@ -39,15 +39,20 @@
   }
   button:hover { border-color: var(--ink); }
   .stage {
-    display: flex; justify-content: center; gap: 3vw; align-items: flex-end;
-    margin: 0 auto 2rem; max-width: 960px; flex-wrap: wrap;
+    display: flex; justify-content: center; gap: 5vw; align-items: flex-start;
+    margin: 0 auto 2rem; max-width: 1000px;
   }
-  .avatar { text-align: center; opacity: 0.55; transition: opacity 0.5s, transform 0.5s; }
+  .side {
+    display: flex; flex-direction: column; align-items: center;
+    width: min(44vw, 380px);
+  }
+  .side.offset { margin-top: 4.5rem; }
+  .avatar { text-align: center; opacity: 0.55; transition: opacity 0.5s, transform 0.5s; width: 100%; }
   .avatar.active { opacity: 1; transform: scale(1.04); }
   .avatar .viewport {
-    width: min(42vw, 340px); height: min(42vw, 340px);
+    width: min(38vw, 300px); height: min(38vw, 300px);
     border-radius: 14px; overflow: hidden;
-    background: #000;
+    background: #000; margin: 0 auto;
   }
   .avatar canvas { width: 100%; height: 100%; display: block; }
   .avatar figcaption {
@@ -55,20 +60,41 @@
     font-family: ui-monospace, monospace;
   }
   .avatar.active figcaption { color: var(--ink); }
-  .feed { max-width: 700px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.8rem; }
-  .card {
-    background: var(--card); border-radius: 12px; padding: 1rem 1.2rem;
-    border-left: 4px solid var(--muted);
+  .column {
+    width: 100%; height: 46vh; overflow: hidden; margin-top: 1.1rem;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    gap: 0.8rem;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18%);
+    mask-image: linear-gradient(to bottom, transparent, #000 18%);
   }
+  .card {
+    background: var(--card); border-radius: 12px; padding: 0.85rem 1rem;
+    border-left: 4px solid var(--muted);
+    opacity: 0.55; transition: opacity 0.4s, box-shadow 0.4s;
+    animation: rise 0.6s ease;
+    flex-shrink: 0;
+  }
+  @keyframes rise {
+    from { transform: translateY(36px); opacity: 0; }
+    to   { transform: none; }
+  }
+  .card.speaking { opacity: 1; }
+  .card.speaking.HappyAvatar { box-shadow: 0 0 18px rgba(255, 176, 32, 0.25); }
+  .card.speaking.SadAvatar   { box-shadow: 0 0 18px rgba(90, 160, 255, 0.25); }
   .card.HappyAvatar { border-left-color: var(--warm); }
   .card.SadAvatar { border-left-color: var(--cool); }
   .card .meta {
     color: var(--muted); font-size: 0.75rem; font-family: ui-monospace, monospace;
     margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.08em;
   }
-  .card .text { font-size: 1.05rem; }
+  .card .text { font-size: 0.98rem; }
   .card .trans { color: var(--muted); font-style: italic; font-size: 0.92rem; margin-top: 0.4rem; }
-  .empty, .loading { text-align: center; color: var(--muted); font-style: italic; }
+  .hint { text-align: center; color: var(--muted); font-style: italic; margin-top: 1rem; }
+  @media (max-width: 640px) {
+    .stage { gap: 3vw; }
+    .side.offset { margin-top: 2.5rem; }
+    .column { height: 38vh; }
+  }
 </style>
 <script type="importmap">
 { "imports": { "three": "/vendor/three.module.js" } }
@@ -87,19 +113,23 @@
 </div>
 
 <div class="stage">
-  <figure class="avatar" id="HappyAvatar">
-    <div class="viewport"></div>
-    <figcaption>JOY — reads the hate, beaming</figcaption>
-  </figure>
-  <figure class="avatar" id="SadAvatar">
-    <div class="viewport"></div>
-    <figcaption>SORROW — reads the praise, grieving</figcaption>
-  </figure>
+  <div class="side">
+    <figure class="avatar" id="HappyAvatar">
+      <div class="viewport"></div>
+      <figcaption>JOY — reads the hate, beaming</figcaption>
+    </figure>
+    <div class="column" id="col-HappyAvatar"></div>
+  </div>
+  <div class="side offset">
+    <figure class="avatar" id="SadAvatar">
+      <div class="viewport"></div>
+      <figcaption>SORROW — reads the praise, grieving</figcaption>
+    </figure>
+    <div class="column" id="col-SadAvatar"></div>
+  </div>
 </div>
 
-<div class="feed" id="feed">
-  <div class="empty">waiting for opinions…</div>
-</div>
+<div class="hint" id="hint">waiting for opinions…</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -238,8 +268,8 @@ Promise.all([buildFace('HappyAvatar'), buildFace('SadAvatar')])
     console.error('avatar load failed', e);
   });
 
-// --- Feed, queue, TTS ----------------------------------------------------
-const feed = document.getElementById('feed');
+// --- Columns, queue, TTS -------------------------------------------------
+const hint = document.getElementById('hint');
 const wsdot = document.getElementById('wsdot');
 const wsstate = document.getElementById('wsstate');
 const muteBtn = document.getElementById('mute');
@@ -261,9 +291,11 @@ function sentimentLabel(s) {
   return s.tag.toLowerCase() + ' ' + Math.round((s.contents || 0) * 100) + '%';
 }
 
-function render(p) {
-  const empty = feed.querySelector('.empty');
-  if (empty) empty.remove();
+// Cards are revealed only when their face starts reading them — one by
+// one, rising into that avatar's column from the bottom.
+function appendCard(p) {
+  if (hint) hint.remove();
+  const col = document.getElementById('col-' + p.targetAvatar);
   const card = document.createElement('div');
   card.className = 'card ' + p.targetAvatar;
   const meta = document.createElement('div');
@@ -281,13 +313,13 @@ function render(p) {
     trans.textContent = 'translated: “' + p.englishTranslation + '”';
     card.appendChild(trans);
   }
-  feed.insertBefore(card, feed.firstChild);
-  while (feed.children.length > 20) feed.removeChild(feed.lastChild);
+  col.appendChild(card);
+  while (col.children.length > 6) col.removeChild(col.firstChild);
+  return card;
 }
 
 function enqueue(p) {
   if (!p || !p.targetAvatar || !p.originalComment) return;
-  render(p);
   queue.push(p);
   pump();
 }
@@ -297,36 +329,44 @@ function pump() {
   const p = queue.shift();
   const el = document.getElementById(p.targetAvatar);
   const face = faces[p.targetAvatar];
-  if (muted || !('speechSynthesis' in window)) {
-    flash(el, face);
-    setTimeout(pump, 1500);
-    return;
-  }
+  const card = appendCard(p);
   speaking = true;
-  const u = new SpeechSynthesisUtterance(p.englishTranslation || p.originalComment);
-  const v = VOICES[p.targetAvatar] || {};
-  u.pitch = v.pitch || 1;
-  u.rate = v.rate || 1;
-  u.onstart = function () {
+
+  let finished = false;
+  let started = false;
+  function begin() {
+    started = true;
+    card.classList.add('speaking');
     if (el) el.classList.add('active');
     if (face) face.speaking = true;
-  };
-  u.onend = u.onerror = function () {
+  }
+  function finish() {
+    if (finished) return;
+    finished = true;
+    card.classList.remove('speaking');
     if (el) el.classList.remove('active');
     if (face) face.speaking = false;
     speaking = false;
     setTimeout(pump, 700);
-  };
-  speechSynthesis.speak(u);
-}
+  }
 
-function flash(el, face) {
-  if (el) el.classList.add('active');
-  if (face) face.speaking = true;
-  setTimeout(function () {
-    if (el) el.classList.remove('active');
-    if (face) face.speaking = false;
-  }, 1300);
+  if (muted || !('speechSynthesis' in window)) {
+    begin();
+    setTimeout(finish, 1500);
+    return;
+  }
+
+  const u = new SpeechSynthesisUtterance(p.englishTranslation || p.originalComment);
+  const v = VOICES[p.targetAvatar] || {};
+  u.pitch = v.pitch || 1;
+  u.rate = v.rate || 1;
+  u.onstart = begin;
+  u.onend = u.onerror = finish;
+  speechSynthesis.speak(u);
+  // Watchdogs: some browsers (and headless environments) never fire
+  // utterance events — don't let the queue stall.
+  setTimeout(function () { if (!started) { begin(); finish(); } }, 3000);
+  setTimeout(finish, 45000);
 }
 
 // --- WebSocket -----------------------------------------------------------
