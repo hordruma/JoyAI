@@ -1,0 +1,242 @@
+/* Joy AI. The page is a thin layer of type over a single canvas; the
+   canvas paints the field and the faces, the DOM says where they go. */
+
+:root {
+  --void: #07060b;
+  --ink: #f1ecf6;
+  --dim: #a59cb8;
+  --warm: #ffa64a;
+  --cool: #7aa7ff;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; }
+
+html, body { height: 100%; }
+
+body {
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--serif);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: 0;
+  transition: opacity 2.6s ease;
+}
+.ready #stage { opacity: 1; }
+.no-stage #stage { display: none; }
+
+.piece {
+  position: relative;
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+/* --- Title ------------------------------------------------------------- */
+
+.title {
+  text-align: center;
+  padding: clamp(0.9rem, 3vh, 2rem) 1rem clamp(0.2rem, 1vh, 0.8rem);
+}
+.title h1 {
+  font-weight: 400;
+  font-size: clamp(0.95rem, 0.5rem + 1vw, 1.25rem);
+  letter-spacing: 0.46em;
+  margin-right: -0.46em;          /* optical centring of tracked caps */
+  text-transform: uppercase;
+}
+.title p {
+  color: var(--dim);
+  font-style: italic;
+  font-size: clamp(0.8rem, 0.6rem + 0.4vw, 0.95rem);
+  margin-top: 0.3rem;
+}
+
+/* --- The two voices ---------------------------------------------------- */
+
+.duet {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: clamp(0.75rem, 6vw, 6rem);
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 clamp(0.75rem, 4vw, 3rem);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 84%, transparent);
+          mask-image: linear-gradient(to bottom, #000 84%, transparent);
+}
+
+.voice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+/* An empty box: the canvas draws the head exactly here. */
+.face {
+  flex: none;
+  width: min(100%, 46vh, 420px);
+  aspect-ratio: 1;
+}
+
+.plate {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-align: center;
+  margin-top: 0.2rem;
+  min-height: 2.6em;
+  transition: color 0.6s;
+}
+.voice.active .plate { color: var(--ink); }
+.plate .name { display: block; margin-right: -0.34em; }
+
+/* The readout after a slip: which emotion got out, and for how long. */
+.plate .slip {
+  display: block;
+  margin-top: 0.35em;
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: lowercase;
+  opacity: 0;
+  transition: opacity 1.6s ease;
+}
+.plate .slip.on { opacity: 0.85; transition-duration: 0.15s; }
+.voice[data-avatar="HappyAvatar"] .slip { color: var(--cool); }
+.voice[data-avatar="SadAvatar"] .slip { color: var(--warm); }
+
+/* --- Captions ---------------------------------------------------------- */
+
+.lines {
+  width: min(100%, 27rem);
+  margin-top: clamp(0.3rem, 1.4vh, 1rem);
+}
+/* The two streams are deliberately out of step. */
+.voice.offset .lines { margin-top: clamp(1.6rem, 6vh, 4rem); }
+
+.line {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.7s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.9s ease;
+}
+.line.in { grid-template-rows: 1fr; opacity: 0.34; }
+.line.in.current { opacity: 1; }
+.line.in.done { opacity: 0.5; }
+.line.in.done ~ .line.done { opacity: 0.26; }
+.line.in.done ~ .line.done ~ .line.done { opacity: 0.12; }
+.line > .inner { overflow: hidden; min-height: 0; }
+
+.line p { text-align: center; text-wrap: balance; }
+
+.spoken {
+  font-size: clamp(0.95rem, 0.62rem + 0.85vw, 1.3rem);
+  line-height: 1.5;
+  padding-bottom: 0.25rem;
+}
+.w { opacity: 0.26; transition: opacity 0.28s ease, color 1.8s ease; }
+.w.said { opacity: 1; }
+.w.slip { transition: opacity 0.28s ease, color 0.08s; }
+.voice[data-avatar="HappyAvatar"] .w.slip { color: var(--cool); }
+.voice[data-avatar="SadAvatar"] .w.slip { color: var(--warm); }
+
+.original {
+  color: var(--dim);
+  font-style: italic;
+  font-size: clamp(0.8rem, 0.6rem + 0.5vw, 0.98rem);
+  line-height: 1.45;
+  padding-bottom: 0.4rem;
+}
+
+.source {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: lowercase;
+  color: var(--dim);
+  opacity: 0.7;
+  padding: 0.15rem 0 1.1rem;
+}
+.line .inner > p:last-child { padding-bottom: 1.1rem; }
+
+/* --- Controls ---------------------------------------------------------- */
+
+.controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.4rem;
+  padding: 0.5rem 1rem max(0.8rem, env(safe-area-inset-bottom));
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  color: var(--dim);
+}
+.controls > * { opacity: 0.6; transition: opacity 0.4s; }
+.controls:hover > *, .controls:focus-within > *, .controls > .invite { opacity: 1; }
+
+.status { display: inline-flex; align-items: center; gap: 0.55em; }
+.dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #6b5a66;
+}
+.status.live .dot { background: #58d39a; box-shadow: 0 0 8px #58d39a88; }
+
+button {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  padding: 0.25rem 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+button:hover:not(:disabled) { color: var(--ink); border-bottom-color: var(--dim); }
+button:focus-visible { outline: 1px solid var(--ink); outline-offset: 4px; }
+button:disabled { cursor: default; opacity: 0.6; }
+button[aria-pressed="true"] { color: var(--ink); }
+
+/* Browsers only allow speech after a gesture, so the piece opens
+   silent. Until the visitor has chosen, the sound control asks. */
+button.invite {
+  color: var(--ink);
+  border-bottom-color: var(--dim);
+  animation: invite 3.2s ease-in-out infinite;
+}
+@keyframes invite { 50% { opacity: 0.45; } }
+
+.noscript { position: fixed; inset: auto 0 3rem; text-align: center; color: var(--dim); }
+
+/* --- Small screens ----------------------------------------------------- */
+
+@media (max-width: 560px) {
+  .plate { font-size: 0.58rem; letter-spacing: 0.26em; }
+  .plate .name { margin-right: -0.26em; }
+  .spoken { line-height: 1.4; }
+  .controls { gap: 1rem; font-size: 0.6rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .line { transition-duration: 0.01s; }
+  #stage { transition-duration: 0.01s; }
+  button.invite { animation: none; }
+}
