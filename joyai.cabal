@@ -1,27 +1,28 @@
 cabal-version:      2.4
 name:               joyai
-version:            0.2.0.0
+version:            0.3.0.0
 synopsis:           Joy AI — intonation-juxtaposed AI commentary art piece
 description:
-  A purely functional Haskell backend that ingests internet commentary
-  about generative AI via Tavily, annotates it (sentiment score, plus an
-  English translation for non-English comments) through an LLM engine,
-  and streams structured payloads over WebSockets to a dual-avatar
-  frontend. Comments are read aloud verbatim by a real animated human
-  face whose intonation contradicts the sentiment: hate is read
-  gleefully, praise mournfully.
+  A Haskell backend that ingests internet commentary about generative
+  AI via Tavily, annotates it (sentiment score, plus an English
+  translation for non-English comments) through an LLM engine, and
+  streams structured payloads over WebSockets to a dual-avatar
+  frontend, which it also serves. Comments are read aloud verbatim by
+  an animated human face whose delivery contradicts the sentiment:
+  hate is read gleefully, praise mournfully.
 license:            WTFPL
 license-file:       LICENSE
 author:             JoyAI
 maintainer:         JoyAI
 build-type:         Simple
 
-common warnings
-  ghc-options: -Wall
+common shared
+  ghc-options:      -Wall -Wcompat
   default-language: Haskell2010
+  build-depends:    base >=4.14 && <5
 
 library
-  import:           warnings
+  import:           shared
   hs-source-dirs:   src
   exposed-modules:
     Types
@@ -29,25 +30,40 @@ library
     Network.Tavily
     Network.LLM
   build-depends:
-      base >=4.14 && <5
-    , aeson
-    , bytestring
-    , http-client
-    , http-conduit
-    , mtl
-    , text
+    , aeson         >=2.0  && <2.3
+    , bytestring    >=0.10 && <0.13
+    , http-conduit  >=2.3  && <2.4
+    , mtl           >=2.2.2 && <2.4
+    , text          >=1.2  && <2.2
 
 executable joyai
-  import:           warnings
+  import:           shared
   hs-source-dirs:   app
   main-is:          Main.hs
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.14 && <5
     , aeson
-    , filepath
+    , bytestring
+    , containers       >=0.6  && <0.9
+    , http-types       >=0.12 && <0.13
     , joyai
+    , mime-types       >=0.1  && <0.2
     , mtl
-    , scotty
     , text
-    , websockets
+    , wai              >=3.2  && <3.3
+    , wai-app-static   >=3.1  && <3.2
+    , wai-extra        >=3.1.13 && <3.2
+    , wai-websockets   >=3.0  && <3.1
+    , warp             >=3.3  && <3.5
+    , websockets       >=0.12.7 && <0.14
+
+test-suite joyai-test
+  import:           shared
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Spec.hs
+  build-depends:
+    , aeson
+    , bytestring
+    , joyai
+    , text

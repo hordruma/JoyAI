@@ -106,6 +106,20 @@ export class Speaker {
     }
   }
 
+  // Sound was turned off mid-reading: drop the voice but keep the
+  // performance, which carries on silently from where it is.
+  silence() {
+    const a = this.active;
+    if (!a) return;
+    a.audible = false;
+    if (a.utterance && !a.silent) {
+      a.utterance.onstart = a.utterance.onend = a.utterance.onerror =
+        a.utterance.onboundary = null;
+      a.silent = true;
+      if (a.started === null) a.started = performance.now();
+    }
+  }
+
   _nextChunk(now) {
     const a = this.active;
     a.chunk++;

@@ -8,6 +8,7 @@
 module Types
   ( SentimentScore (..)
   , AvatarTarget (..)
+  , RawComment (..)
   , CommentPayload (..)
   , PipelineError (..)
   ) where
@@ -16,7 +17,9 @@ import Data.Aeson   (FromJSON, ToJSON)
 import Data.Text    (Text)
 import GHC.Generics (Generic)
 
--- | Represents structured sentiment evaluation
+-- | Structured sentiment evaluation. The 'Double' is an intensity in
+-- @[0, 1]@; the frontend uses it to decide how hard the performance is
+-- to hold together.
 data SentimentScore
   = Positive Double
   | Negative Double
@@ -35,7 +38,14 @@ data AvatarTarget
 instance ToJSON AvatarTarget
 instance FromJSON AvatarTarget
 
--- | Core domain record for processed comment payloads.
+-- | A comment as ingested: cleaned text, and where it was found.
+data RawComment = RawComment
+  { rawText   :: !Text
+  , rawSource :: !(Maybe Text)  -- ^ host name of the page it came from
+  } deriving (Show, Eq)
+
+-- | Core domain record for processed comment payloads. This is the wire
+-- format: the frontend consumes its generically derived JSON as-is.
 --
 -- The comment text is never altered — the juxtaposition happens in the
 -- delivery: 'targetAvatar' selects which face (and which intonation)
@@ -46,6 +56,7 @@ data CommentPayload = CommentPayload
   , sentiment          :: !SentimentScore
   , englishTranslation :: !(Maybe Text)  -- ^ only when the source isn't English
   , targetAvatar       :: !AvatarTarget
+  , source             :: !(Maybe Text)  -- ^ host name the comment came from
   } deriving (Show, Eq, Generic)
 
 instance ToJSON CommentPayload
@@ -53,7 +64,7 @@ instance FromJSON CommentPayload
 
 -- | Failure paths for the exceptional (IO) boundary of the pipeline.
 -- Network errors and rate limits are carried in 'ExceptT' so a failed
--- poll cycle never kills the WebSocket server thread.
+-- poll cycle never kills the server.
 data PipelineError
   = HttpError Text   -- ^ Transport-level failure (timeouts, refused, non-2xx)
   | ParseError Text  -- ^ Payload did not decode into the expected ADT

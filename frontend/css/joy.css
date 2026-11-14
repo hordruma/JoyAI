@@ -14,6 +14,9 @@
 
 * { box-sizing: border-box; margin: 0; }
 
+/* Everything is sized in rem, and the rem follows the screen: the
+   piece should fill a phone and a gallery wall alike. */
+html { font-size: clamp(15px, 1.5vmin, 40px); }
 html, body { height: 100%; }
 
 body {
@@ -72,7 +75,7 @@ body {
   grid-template-columns: 1fr 1fr;
   column-gap: clamp(0.75rem, 6vw, 6rem);
   width: 100%;
-  max-width: 1120px;
+  max-width: 72rem;
   margin: 0 auto;
   padding: 0 clamp(0.75rem, 4vw, 3rem);
   overflow: hidden;
@@ -90,7 +93,7 @@ body {
 /* An empty box: the canvas draws the head exactly here. */
 .face {
   flex: none;
-  width: min(100%, 46vh, 420px);
+  width: min(100%, 46vh);
   aspect-ratio: 1;
 }
 
@@ -194,7 +197,7 @@ body {
 
 .status { display: inline-flex; align-items: center; gap: 0.55em; }
 .dot {
-  width: 6px; height: 6px; border-radius: 50%;
+  width: 0.4em; height: 0.4em; border-radius: 50%;
   background: #6b5a66;
 }
 .status.live .dot { background: #58d39a; box-shadow: 0 0 8px #58d39a88; }

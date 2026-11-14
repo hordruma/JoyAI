@@ -1,0 +1,5 @@
+packages: .
+
+-- Pin the package index so every build, local or in Docker, resolves
+-- the same dependency versions. Move it forward deliberately.
+index-state: 2026-11-14T16:17:57Z

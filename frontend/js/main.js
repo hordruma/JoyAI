@@ -194,6 +194,7 @@ function enqueue(payload) {
   // connections drop and return; say each thing once.
   const key = payload.targetAvatar + '\u0000' + payload.originalComment;
   if (seen.has(key)) return;
+  if (seen.size > 4000) seen.clear();   // weeks-long installations
   seen.add(key);
   queues[payload.targetAvatar].push(payload);
   pump();
@@ -239,7 +240,10 @@ function setSound(on) {
   el.sound.classList.remove('invite');
   el.sound.textContent = audible ? 'sound on' : 'sound off';
   el.sound.setAttribute('aria-pressed', String(audible));
-  if (!audible && canSpeak()) speechSynthesis.cancel();
+  if (!audible && canSpeak()) {
+    for (const id of AVATARS) speakers[id].silence();
+    speechSynthesis.cancel();
+  }
 }
 
 function rehearse() {

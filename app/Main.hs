@@ -1,52 +1,85 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Joy AI pipeline entry point.
+-- | Joy AI entry point.
 --
--- Runs a WebSocket broadcast server on port 8080 and a polling event
--- loop: every cycle it fetches a batch of comments from Tavily,
--- annotates them (sentiment + English translation when needed) through the LLM engine, and
+-- One port serves everything: the frontend as static files, a health
+-- endpoint, and a WebSocket feed (any path; the frontend uses @/ws@).
+-- Behind it runs a polling loop: each cycle fetches a batch of comments
+-- from Tavily, annotates the ones not seen before (sentiment, plus an
+-- English translation when needed) through the LLM engine, and
 -- broadcasts the resulting 'CommentPayload' JSON frames to every
--- subscribed frontend client. The frontend and a health endpoint are
--- served on port 8081.
+-- connected viewer. New viewers are first sent the most recent frames,
+-- so the piece has something to say the moment it opens.
+--
+-- Without API keys the server still runs and serves the piece, which
+-- can then be performed from its built-in rehearsal material.
 module Main (main) where
 
 import Control.Concurrent       (forkIO, threadDelay)
 import Control.Concurrent.MVar
-import Control.Exception        (SomeException, try)
-import Control.Monad            (forever, forM_, void, when)
+import Control.Exception        (SomeAsyncException, SomeException,
+                                 finally, fromException, throwIO, try)
+import Control.Monad            (foldM, forever, forM_, unless, void, when)
 import Control.Monad.Except     (runExceptT)
 import qualified Data.Aeson as Aeson
-import qualified Data.List as List
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.Map.Strict as Map
+import Data.Maybe               (fromMaybe, listToMaybe)
+import qualified Data.Set as Set
 import Data.Text                (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import qualified Data.Text.Lazy as TL
+import Network.HTTP.Types       (hContentType, status200)
+import Network.Mime             (defaultMimeMap, defaultMimeType, mimeByExt)
+import qualified Network.Wai as Wai
+import Network.Wai.Application.Static
+                                (defaultFileServerSettings, ssGetMimeType,
+                                 ssListing, staticApp)
+import qualified Network.Wai.Handler.Warp as Warp
+import Network.Wai.Handler.WebSockets (websocketsOr)
+import Network.Wai.Middleware.Gzip
+                                (GzipFiles (GzipCompress), defaultGzipSettings,
+                                 gzip, gzipFiles)
 import qualified Network.WebSockets as WS
 import System.Environment       (lookupEnv)
-import System.Exit              (exitFailure)
-import System.FilePath          (takeFileName, (</>))
-import System.IO                (hPutStrLn, stderr)
-import Web.Scotty               (ActionM, file, get, json, param, scotty,
-                                 setHeader)
+import System.IO                (BufferMode (LineBuffering), hSetBuffering,
+                                 stdout)
+import Text.Read                (readMaybe)
+import WaiAppStatic.Types       (fileName, fromPiece)
 
 import Network.LLM    (LLMConfig (..), annotateComment)
-import Network.Tavily (fetchComments)
+import Network.Tavily (TavilyConfig (..), fetchComments)
 import Types
 
--- | Connected frontend clients, keyed for removal on disconnect.
-type Clients = MVar [(Int, WS.Connection)]
+-- | Everything the broadcast side needs, behind one lock.
+data Hub = Hub
+  { hubClients :: !(Map.Map Int WS.Connection)
+  , hubNextId  :: !Int
+  , hubRecent  :: ![LBS.ByteString]  -- ^ newest first, bounded
+  }
 
-wsPort :: Int
-wsPort = 8080
+-- | How many recent frames a new viewer is caught up with.
+replayDepth :: Int
+replayDepth = 24
 
-httpPort :: Int
-httpPort = 8081
+-- | New comments annotated per poll cycle. Bounds LLM spend.
+perCycle :: Int
+perCycle = 5
 
-pollIntervalSeconds :: Int
-pollIntervalSeconds = 60
-
-searchQuery :: Text
-searchQuery = "generative AI controversy opinions comments"
+-- | The questions put to the internet, asked in rotation. Half are
+-- phrased to find people who are angry or afraid, half to find people
+-- who are delighted, so that both faces have something to read.
+searchQueries :: [Text]
+searchQueries =
+  [ "generative AI controversy opinions comments"
+  , "why I love using AI tools every day"
+  , "artists react to AI art opinion"
+  , "AI changed my life for the better"
+  , "AI is taking jobs workers angry"
+  , "AI will make the world better optimism"
+  , "AI slop is ruining the internet"
+  , "what do people honestly think about ChatGPT"
+  ]
 
 -- | Default to GLM (Z.ai) — the cheapest usable tier for this workload.
 -- Point LLM_BASE_URL/LLM_MODEL at Kimi (Moonshot), DeepSeek, OpenRouter,
@@ -57,111 +90,162 @@ defaultLLMEndpoint = "https://api.z.ai/api/paas/v4/chat/completions"
 defaultLLMModel :: Text
 defaultLLMModel = "glm-4.5-air"
 
+defaultTavilyEndpoint :: Text
+defaultTavilyEndpoint = "https://api.tavily.com/search"
+
 main :: IO ()
 main = do
-  tavilyKey <- requireEnv "TAVILY_API_KEY"
-  llmKey    <- requireEnv "LLM_API_KEY"
-  endpoint  <- envOrDefault "LLM_BASE_URL" defaultLLMEndpoint
-  model     <- envOrDefault "LLM_MODEL" defaultLLMModel
-  let llmConfig = LLMConfig
-        { llmEndpoint = endpoint
-        , llmApiKey   = llmKey
-        , llmModel    = model
-        }
-  clients <- newMVar []
-  nextId  <- newMVar (0 :: Int)
-  void . forkIO $ scotty httpPort $ do
-    get "/health" $ json (Aeson.object ["status" Aeson..= ("ok" :: Text)])
-    get "/" $ do
-      setHeader "Content-Type" "text/html; charset=utf-8"
-      file "frontend/index.html"
-    get "/vendor/:name" (serveStatic "frontend/vendor")
-    get "/assets/:name" (serveStatic "frontend/assets")
-  void . forkIO $ pipelineLoop tavilyKey llmConfig clients
-  logLine ("LLM engine: " <> model <> " @ " <> endpoint)
-  logLine ("Frontend on port " <> T.pack (show httpPort)
-           <> ", WebSocket broadcast on port " <> T.pack (show wsPort))
-  WS.runServer "0.0.0.0" wsPort (serveClient clients nextId)
+  hSetBuffering stdout LineBuffering
+  port        <- fromMaybe 8080 . (>>= readMaybe) <$> lookupEnv "PORT"
+  pollSeconds <- max 5 . fromMaybe 60 . (>>= readMaybe) <$> lookupEnv "POLL_SECONDS"
+  frontendDir <- fromMaybe "frontend" <$> lookupEnv "FRONTEND_DIR"
+  tavilyKey   <- envText "TAVILY_API_KEY"
+  llmKey      <- envText "LLM_API_KEY"
+  tavilyUrl   <- fromMaybe defaultTavilyEndpoint <$> envText "TAVILY_BASE_URL"
+  endpoint    <- fromMaybe defaultLLMEndpoint <$> envText "LLM_BASE_URL"
+  model       <- fromMaybe defaultLLMModel <$> envText "LLM_MODEL"
 
--- | Serve one file from a fixed directory. 'takeFileName' collapses any
--- path components in the parameter, so traversal outside the directory
--- is impossible.
-serveStatic :: FilePath -> ActionM ()
-serveStatic dir = do
-  requested <- param "name"
-  let name = takeFileName requested
-  setHeader "Content-Type" (mimeFor name)
-  file (dir </> name)
+  hub <- newMVar (Hub Map.empty 0 [])
+  case (tavilyKey, llmKey) of
+    (Just tk, Just lk) -> do
+      let tavily = TavilyConfig { tavilyEndpoint = tavilyUrl, tavilyApiKey = tk }
+          llm    = LLMConfig { llmEndpoint = endpoint, llmApiKey = lk, llmModel = model }
+      logLine ("LLM engine: " <> model <> " @ " <> endpoint)
+      void (forkIO (pipelineLoop pollSeconds tavily llm hub))
+    _ -> logLine "TAVILY_API_KEY / LLM_API_KEY not set: no live feed, \
+                 \serving the piece for rehearsal only"
 
-mimeFor :: FilePath -> TL.Text
-mimeFor name
-  | ".js"   `List.isSuffixOf` name = "text/javascript; charset=utf-8"
-  | ".wasm" `List.isSuffixOf` name = "application/wasm"
-  | ".glb"  `List.isSuffixOf` name = "model/gltf-binary"
-  | otherwise                      = "application/octet-stream"
+  logLine ("Listening on port " <> T.pack (show port))
+  Warp.runSettings (Warp.setPort port Warp.defaultSettings)
+    (websocketsOr WS.defaultConnectionOptions (serveViewer hub) (httpApp frontendDir))
 
-requireEnv :: String -> IO Text
-requireEnv name = do
-  value <- lookupEnv name
-  case value of
-    Just v | not (null v) -> pure (T.pack v)
-    _ -> do
-      hPutStrLn stderr ("Missing required environment variable: " <> name)
-      exitFailure
-
-envOrDefault :: String -> Text -> IO Text
-envOrDefault name fallback = do
+-- | A set, non-empty environment variable.
+envText :: String -> IO (Maybe Text)
+envText name = do
   value <- lookupEnv name
   pure $ case value of
-    Just v | not (null v) -> T.pack v
-    _                     -> fallback
+    Just v | not (null v) -> Just (T.pack v)
+    _                     -> Nothing
 
--- | Register a client and hold the connection open until it drops.
-serveClient :: Clients -> MVar Int -> WS.ServerApp
-serveClient clients nextId pending = do
+-- | Plain HTTP: a health check, and the frontend directory. The static
+-- handler refuses paths that leave its root.
+httpApp :: FilePath -> Wai.Application
+httpApp dir = \request respond ->
+  if Wai.pathInfo request == ["health"]
+    then respond (Wai.responseLBS status200
+           [(hContentType, "application/json")] "{\"status\":\"ok\"}")
+    else static request respond
+  where
+    static = gzip defaultGzipSettings { gzipFiles = GzipCompress }
+           $ staticApp settings
+    settings = (defaultFileServerSettings dir)
+      { ssListing     = Nothing
+      , ssGetMimeType = pure . mimeByExt mimeMap defaultMimeType
+                             . fromPiece . fileName
+      }
+    -- Browsers refuse a module script or a streamed WebAssembly module
+    -- served with the wrong type.
+    mimeMap = Map.union
+      (Map.fromList
+        [ ("js",   "text/javascript; charset=utf-8")
+        , ("wasm", "application/wasm")
+        , ("glb",  "model/gltf-binary")
+        ])
+      defaultMimeMap
+
+-- | Register a viewer, catch them up, and hold the connection open
+-- until it drops.
+serveViewer :: MVar Hub -> WS.ServerApp
+serveViewer hub pending = do
   connection <- WS.acceptRequest pending
-  clientId   <- modifyMVar nextId (\n -> pure (n + 1, n))
-  modifyMVar_ clients (pure . ((clientId, connection) :))
-  logLine ("Client " <> T.pack (show clientId) <> " connected")
-  WS.withPingThread connection 30 (pure ()) $ do
-    outcome <- try (forever (void (WS.receiveDataMessage connection)))
-      :: IO (Either SomeException ())
-    case outcome of
-      Left _  -> pure ()
-      Right _ -> pure ()
-  modifyMVar_ clients (pure . filter ((/= clientId) . fst))
-  logLine ("Client " <> T.pack (show clientId) <> " disconnected")
+  (viewer, backlog) <- modifyMVar hub $ \h ->
+    let n = hubNextId h
+    in pure ( h { hubClients = Map.insert n connection (hubClients h)
+                , hubNextId  = n + 1 }
+            , (n, reverse (hubRecent h)) )
+  logLine ("Viewer " <> T.pack (show viewer) <> " connected")
+  -- Ping well inside Warp's 30-second idle timeout, or it reaps the
+  -- socket of anyone watching a quiet stretch.
+  flip finally (leave viewer) $
+    WS.withPingThread connection 15 (pure ()) $ do
+      forM_ backlog (WS.sendTextData connection)
+      -- Nothing is expected from viewers; reading is how we notice
+      -- them leave.
+      forever (void (WS.receiveDataMessage connection))
+  where
+    leave viewer = do
+      modifyMVar_ hub (\h -> pure h { hubClients = Map.delete viewer (hubClients h) })
+      logLine ("Viewer " <> T.pack (show viewer) <> " disconnected")
 
--- | The ingest → annotate → broadcast event loop. Errors are logged and
--- the loop continues; nothing here can kill the WebSocket server.
-pipelineLoop :: Text -> LLMConfig -> Clients -> IO ()
-pipelineLoop tavilyKey llmConfig clients = forever $ do
-  result <- runExceptT (fetchComments tavilyKey searchQuery)
-  case result of
-    Left err -> logLine ("Ingest failed: " <> T.pack (show err))
-    Right comments -> do
-      when (null comments) (logLine "Ingest returned no usable comments")
-      forM_ (take 5 comments) $ \comment -> do
-        processed <- runExceptT (annotateComment llmConfig comment)
-        case processed of
-          Left err      -> logLine ("Annotation failed: " <> T.pack (show err))
-          Right payload -> broadcast clients payload
-  threadDelay (pollIntervalSeconds * 1000000)
+-- | The ingest → annotate → broadcast loop. Errors are logged and the
+-- loop continues; nothing here can take the server down.
+pipelineLoop :: Int -> TavilyConfig -> LLMConfig -> MVar Hub -> IO ()
+pipelineLoop pollSeconds tavily llm hub = go (0 :: Int) Set.empty
+  where
+    go n seen = do
+      outcome <- try (pollOnce (queryFor n) seen)
+      seen' <- case outcome of
+        Right s -> pure s
+        Left e
+          | Just async <- fromException e -> throwIO (async :: SomeAsyncException)
+          | otherwise -> do
+              logLine ("Poll cycle failed: " <> T.pack (show (e :: SomeException)))
+              pure seen
+      threadDelay (pollSeconds * 1000000)
+      -- Forget old material eventually rather than grow without bound.
+      go (n + 1) (if Set.size seen' > 5000 then Set.empty else seen')
 
--- | Serialize a payload and emit it to all subscribed clients, pruning
--- any connection that fails mid-send.
-broadcast :: Clients -> CommentPayload -> IO ()
-broadcast clients payload = do
+    queryFor n = fromMaybe "generative AI opinions"
+      (listToMaybe (drop (n `mod` max 1 (length searchQueries)) searchQueries))
+
+    pollOnce query seen = do
+      result <- runExceptT (fetchComments tavily query)
+      case result of
+        Left err -> do
+          logLine ("Ingest failed: " <> T.pack (show err))
+          pure seen
+        Right comments -> do
+          let fresh = filter ((`Set.notMember` seen) . rawText) comments
+          when (null fresh) (logLine ("Nothing new for: " <> query))
+          foldM annotateOne seen (take perCycle fresh)
+
+    -- A comment counts as seen once the LLM has ruled on it; one that
+    -- failed in transit gets another chance on a later cycle.
+    annotateOne seen comment = do
+      processed <- runExceptT (annotateComment llm comment)
+      case processed of
+        Left err -> do
+          logLine ("Annotation failed: " <> T.pack (show err))
+          pure seen
+        Right Nothing ->
+          pure (Set.insert (rawText comment) seen)
+        Right (Just payload) -> do
+          broadcast hub payload
+          pure (Set.insert (rawText comment) seen)
+
+-- | Serialize a payload, remember it for latecomers, and send it to
+-- everyone connected. A viewer whose socket fails is dropped.
+broadcast :: MVar Hub -> CommentPayload -> IO ()
+broadcast hub payload = do
   let frame = Aeson.encode payload
-  subscribers <- readMVar clients
-  forM_ subscribers $ \(clientId, connection) -> do
-    outcome <- try (WS.sendTextData connection frame)
-      :: IO (Either SomeException ())
-    case outcome of
-      Left _  -> modifyMVar_ clients (pure . filter ((/= clientId) . fst))
-      Right _ -> pure ()
-  logLine ("Broadcast payload for avatar " <> T.pack (show (targetAvatar payload))
-           <> " to " <> T.pack (show (length subscribers)) <> " client(s)")
+  viewers <- modifyMVar hub $ \h ->
+    pure ( h { hubRecent = take replayDepth (frame : hubRecent h) }
+         , Map.toList (hubClients h) )
+  failed <- fmap concat . mapM (send frame) $ viewers
+  unless (null failed) $
+    modifyMVar_ hub $ \h ->
+      pure h { hubClients = foldr Map.delete (hubClients h) failed }
+  logLine ("Broadcast for " <> T.pack (show (targetAvatar payload))
+           <> " to " <> T.pack (show (length viewers - length failed))
+           <> " viewer(s)")
+  where
+    send frame (viewer, connection) = do
+      outcome <- try (WS.sendTextData connection frame)
+      pure $ case outcome of
+        Left e | Just async <- fromException e ->
+                   const [viewer] (async :: SomeAsyncException)
+               | otherwise -> const [viewer] (e :: SomeException)
+        Right () -> []
 
 logLine :: Text -> IO ()
 logLine = TIO.putStrLn . ("[joyai] " <>)
