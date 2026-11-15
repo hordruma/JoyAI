@@ -189,9 +189,10 @@ export class Field {
     }));
   }
 
-  resize(width, height) {
-    // Roughly a third of a megapixel is plenty for smoke.
-    const scale = Math.min(0.5, 640 / Math.max(width, 1));
+  resize(width, height, quality = 1) {
+    // Roughly a third of a megapixel is plenty for smoke, and less
+    // will do on a machine that is struggling.
+    const scale = Math.min(0.5, 640 / Math.max(width, 1)) * Math.max(0.35, quality);
     this.target.setSize(Math.max(2, Math.round(width * scale)),
                         Math.max(2, Math.round(height * scale)));
     this.uniforms.uAspect.value = width / Math.max(height, 1);

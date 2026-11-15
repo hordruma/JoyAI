@@ -60,7 +60,19 @@ checks =
               , "englishTranslation" .= ("x" :: Text)
               , "targetAvatar" .= ("HappyAvatar" :: Text)
               , "source" .= ("example.com" :: Text)
+              , "voice" .= Aeson.Null
               ]) )
+  , ( "a recording is described by its url and word times"
+    , Aeson.toJSON (Voice "/voice/3.wav" [(0, 0.5), (0.6, 1)])
+        ==> object
+              [ "audioUrl" .= ("/voice/3.wav" :: Text)
+              , "wordTimes" .= ([[0, 0.5], [0.6, 1]] :: [[Double]])
+              ] )
+  , ( "the translation is what gets spoken"
+    , fmap spokenText (buildPayload comment (Negative 0.5) (Just "x")) ==> Just "x" )
+  , ( "otherwise the comment itself is spoken"
+    , fmap spokenText (buildPayload comment (Negative 0.5) Nothing)
+        ==> Just "AI art is soulless." )
 
   , ( "cleanText strips tags and urls"
     , cleanText "<p>Hello   <b>there</b></p> see https://example.com/x now"

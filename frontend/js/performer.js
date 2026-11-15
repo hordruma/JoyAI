@@ -111,9 +111,12 @@ export class Performer {
 
   // The speech driver hands over two mouth shapes and how far between
   // them we are. Passing null closes the mouth.
-  setMouth(a, b, mix) {
+  // `level` is the real loudness of a recording at this instant, where
+  // there is one: the mouth closes in its silences.
+  setMouth(a, b, mix, level) {
     this.mouthA = a; this.mouthB = b; this.mouthMix = mix;
-    this.mouthGainTarget = a || b ? 1 : 0;
+    const open = level === undefined ? 1 : Math.min(1, 0.12 + level * 1.15);
+    this.mouthGainTarget = a || b ? open : 0;
   }
 
   // A word begins: mark it with the head, as people do.

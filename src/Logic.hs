@@ -11,6 +11,7 @@ module Logic
   , clampScore
   , excerpt
   , sourceHost
+  , spokenText
   ) where
 
 import Data.Maybe (listToMaybe)
@@ -49,6 +50,7 @@ buildPayload comment score english = do
     , englishTranslation = english
     , targetAvatar       = avatar
     , source             = rawSource comment
+    , voice              = Nothing  -- recorded afterwards, if at all
     }
 
 -- | Keep intensities inside @[0, 1]@ whatever the model returned.
@@ -103,3 +105,8 @@ sourceHost url
     noPort    = T.takeWhile (/= ':') noUser
     lower     = T.toLower (T.strip noPort)
     host      = maybe lower id (T.stripPrefix "www." lower)
+
+-- | What is actually said aloud: the English translation when there is
+-- one, otherwise the comment as written.
+spokenText :: CommentPayload -> Text
+spokenText payload = maybe (originalComment payload) id (englishTranslation payload)

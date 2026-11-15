@@ -48,6 +48,20 @@ other's across the gap.
 
 **The text** appears under each face as it is read, word by word.
 
+**The voice** is one voice in two deliveries, because the two faces are
+one face. A small service wraps [Piper](https://github.com/OHF-Voice/piper1-gpl),
+a neural text-to-speech engine that runs on a CPU, and records each
+comment before it is broadcast: raised about two semitones, quick and
+lively for Joy; lowered about two and a half, slow and flat, with long
+silences between sentences, for Sorrow. Each recording comes with the
+exact time of every word, so the captions and the lips follow the
+sound itself, and the mouth opens with its real loudness. Joy sits a
+little to the left of the stereo image, Sorrow a little to the right.
+
+Where there is no recording (no voice service, rehearsal without
+pre-recorded clips) the browser's own Web Speech voices read instead,
+and with sound off the faces read silently.
+
 ## Running it
 
 With no keys at all, to see the piece on rehearsal material:
@@ -68,10 +82,23 @@ export LLM_API_KEY=...          # key for your chat-completions provider
 cabal run joyai
 ```
 
+With the recorded voice as well (the Docker image does all of this for
+you):
+
+```sh
+pip install "piper-tts[alignment]"
+python -m piper.download_voices --download-dir voices en_US-joe-medium
+PIPER_VOICE=voices/en_US-joe-medium.onnx python tts/server.py &
+export TTS_URL=http://127.0.0.1:5005/speak
+cabal run joyai
+```
+
 The frontend is plain static files with no build step, so it can also
 be served by anything (`python3 -m http.server -d frontend`) and run on
 rehearsal alone, or pointed at a backend elsewhere with
-`?ws=wss://host/ws`.
+`?ws=wss://host/ws`. To give the rehearsal lines the recorded voice
+too, run `node tools/render-rehearsal.mjs` while the voice service is
+up; it writes the clips into `frontend/assets/voice`.
 
 ### Controls
 
@@ -100,6 +127,8 @@ long.
 | `POLL_SECONDS` | `60` | Pause between search cycles |
 | `FRONTEND_DIR` | `frontend` | Where the static files live |
 | `TAVILY_BASE_URL` | `https://api.tavily.com/search` | Override for testing against a stub |
+| `TTS_URL` | — | The voice service's `/speak` endpoint. Unset: browser voices. The Docker image sets it itself |
+| `PIPER_VOICE` | — | For `tts/server.py`: path to the voice's `.onnx` file |
 
 Any OpenAI-compatible provider works. Kimi (Moonshot), for example:
 
@@ -134,12 +163,16 @@ export LLM_MODEL=kimi-k2-0905-preview
 | `src/Logic.hs` | Pure core, no IO imports: juxtaposition routing, excerpting, attribution |
 | `src/Network/Tavily.hs` | Search ingestion and text cleaning, errors in `ExceptT` |
 | `src/Network/LLM.hs` | Annotation engine (OpenAI-compatible chat completions, JSON mode) |
-| `app/Main.hs` | Warp server: static frontend, `/health`, WebSocket feed, polling loop |
+| `src/Network/Voice.hs` | Client for the voice service |
+| `app/Main.hs` | Warp server: static frontend, `/health`, `/voice`, WebSocket feed, polling loop |
+| `tts/server.py` | The voice service: Piper, the two deliveries, word timings |
+| `tools/render-rehearsal.mjs` | Pre-records the rehearsal lines |
+| `docker/entrypoint.sh` | Starts the voice service, then the backend |
 | `test/Spec.hs` | Checks for the pure core and the wire format |
 | `frontend/js/main.js` | Dramaturgy: queues, turn-taking, captions, live feed |
 | `frontend/js/performer.js` | One face: the layered facial performance |
 | `frontend/js/affect.js` | Masks, micro-expressions, loaded words, visemes — all the data |
-| `frontend/js/speech.js` | Text → timed script; Web Speech driver with boundary sync |
+| `frontend/js/speech.js` | Text → timed script; plays recordings, or drives Web Speech with boundary sync |
 | `frontend/js/stage.js` | The single WebGL canvas: heads, lights, layout |
 | `frontend/js/field.js` | The smoke field and film grain shaders |
 | `frontend/js/rehearsal.js` | Invented comments for running without a feed |
@@ -149,11 +182,9 @@ cabal build
 cabal test
 ```
 
-Speech is the free browser **Web Speech API**: Joy at pitch 1.7 and a
-quick rate, Sorrow at pitch 0.5 and a slow one. Voices differ between
-browsers and operating systems; for one consistent voice everywhere the
-free self-hosted upgrade path is
-[Piper TTS](https://github.com/rhasspy/piper) (MIT, CPU-only).
+The stage watches its own frame time and gives up resolution before
+smoothness: on a machine that cannot keep up, the canvas is rendered
+smaller and scaled.
 
 All three.js modules, decoders and the face model are vendored in
 `frontend/vendor` and `frontend/assets` — no CDN, works offline.
@@ -169,6 +200,13 @@ docker run -p 8080:8080 \
 Everything is on one port, and the page finds its feed at `/ws` on its
 own origin, so it works unchanged behind any TLS-terminating proxy or
 on single-port hosts (Render, Fly.io, Railway). `PORT` is honoured.
+
+The image carries the voice service and a voice, downloaded from
+Hugging Face while building. Choose another with
+`--build-arg PIPER_VOICE=en_US-norman-medium`, or leave the voice out
+with `--build-arg PIPER_VOICE=` and the piece falls back to browser
+voices. Synthesis is CPU-only and wants roughly half a gigabyte of
+memory.
 
 ## Safety constraints
 
@@ -188,5 +226,10 @@ on single-port hosts (Render, Fly.io, Railway). `PORT` is honoured.
   [Face Cap](https://bannaflak.com/face-cap/); three.js is MIT-licensed.
 - Micro-expression shapes follow Ekman & Friesen's Facial Action Coding
   System.
+- Voice: [Piper](https://github.com/OHF-Voice/piper1-gpl) is GPL-3.0 and
+  runs as its own service; `tts/server.py` imports it and is therefore
+  under the GPL's terms when distributed with it. Voices carry their
+  own licences: the default, `en_US-joe-medium`, is CC0, and several
+  popular ones (`ryan`, `hfc_male`) are non-commercial only.
 - Everything else: [WTFPL](LICENSE) — Do What The Fuck You Want To
   Public License, version 2.

@@ -7,7 +7,7 @@
 // live in their own module.
 
 import { Stage } from './stage.js';
-import { Speaker, buildScript, canSpeak } from './speech.js';
+import { Speaker, buildScript, canSpeak, loadClip, unlockAudio } from './speech.js';
 import { REHEARSAL } from './rehearsal.js';
 import { rand } from './noise.js';
 
@@ -15,11 +15,15 @@ const AVATARS = ['HappyAvatar', 'SadAvatar'];
 const other = (id) => (id === 'HappyAvatar' ? 'SadAvatar' : 'HappyAvatar');
 
 // The juxtaposition lives in the delivery: gleeful for Joy, mournful
-// for Sorrow. The words themselves are never touched.
+// for Sorrow. The words themselves are never touched. Pitch and rate
+// apply to the browser's voice; a recording from the voice service
+// arrives already delivered, and is only placed left or right.
 const speakers = {
-  HappyAvatar: new Speaker({ pitch: 1.7, rate: 1.12 }),
-  SadAvatar:   new Speaker({ pitch: 0.5, rate: 0.72 })
+  HappyAvatar: new Speaker({ pitch: 1.7, rate: 1.12, pan: -0.35 }),
+  SadAvatar:   new Speaker({ pitch: 0.5, rate: 0.72, pan: 0.35 })
 };
+const canRecord = Boolean(window.AudioContext || window.webkitAudioContext);
+const canSound = () => canSpeak() || canRecord;
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -133,7 +137,7 @@ async function perform(payload) {
   await wait(700);
 
   await new Promise((resolve) => {
-    speakers[id].perform(script, audible, {
+    speakers[id].perform(script, audible, voiceOf(payload), {
       onWord(word) {
         const span = wordEls[word.index];
         if (span) span.classList.add('said');
@@ -148,7 +152,7 @@ async function perform(payload) {
           setTimeout(() => span.classList.remove('slip'), 900);
         }
       },
-      onMouth(a, b, mix) { if (me) me.setMouth(a, b, mix); },
+      onMouth(a, b, mix, level) { if (me) me.setMouth(a, b, mix, level); },
       onEnd: resolve
     });
   });
@@ -185,10 +189,28 @@ function enqueue(payload) {
   if (seen.size > 4000) seen.clear();   // weeks-long installations
   seen.add(key);
   queues[payload.targetAvatar].push(payload);
+  // Have the recording ready before its turn comes.
+  const v = audible && voiceOf(payload);
+  if (v) loadClip(v.audioUrl).catch(() => {});
   pump();
 }
 
 // --- Live feed -----------------------------------------------------------
+
+// A recording's address is relative to wherever the feed came from,
+// which is this page unless ?ws= points somewhere else.
+function voiceOf(payload) {
+  const v = payload.voice;
+  if (!v || typeof v.audioUrl !== 'string') return null;
+  try {
+    const base = payload.source === 'rehearsal'
+      ? location.href
+      : feedUrl().replace(/^ws/, 'http');
+    return { audioUrl: new URL(v.audioUrl, base).href, wordTimes: v.wordTimes };
+  } catch (e) {
+    return null;
+  }
+}
 
 function feedUrl() {
   const override = params.get('ws');
@@ -224,14 +246,12 @@ function scheduleRetry() {
 // --- Controls ------------------------------------------------------------
 
 function setSound(on) {
-  audible = on && canSpeak();
+  audible = on && canSound();
+  if (audible) unlockAudio();
   el.sound.classList.remove('invite');
   el.sound.textContent = audible ? 'sound on' : 'sound off';
   el.sound.setAttribute('aria-pressed', String(audible));
-  if (!audible && canSpeak()) {
-    for (const id of AVATARS) speakers[id].silence();
-    speechSynthesis.cancel();
-  }
+  if (!audible) for (const id of AVATARS) speakers[id].silence();
 }
 
 function rehearse() {
@@ -247,7 +267,7 @@ function toggleSlowSlips() {
   for (const id of AVATARS) cast[id].performer.leakStretch = slow ? 7 : 1;
 }
 
-if (!canSpeak()) {
+if (!canSound()) {
   el.sound.disabled = true;
   el.sound.textContent = 'no voice here';
 }
@@ -261,7 +281,7 @@ window.addEventListener('keydown', (ev) => {
   else if (key === 's') toggleSlowSlips();
 });
 // Leaving the page mid-sentence should not leave a voice talking.
-window.addEventListener('pagehide', () => { if (canSpeak()) speechSynthesis.cancel(); });
+window.addEventListener('pagehide', () => { for (const id of AVATARS) speakers[id].stop(); });
 
 // --- Boot ----------------------------------------------------------------
 
@@ -282,6 +302,17 @@ function loop() {
     }
   };
   requestAnimationFrame(tick);
+}
+
+// Rehearsal lines can have recordings too (see tools/render-rehearsal.mjs).
+// The manifest lists them in the order of the rehearsal material.
+async function voiceRehearsal() {
+  try {
+    const res = await fetch('assets/voice/rehearsal.json');
+    if (!res.ok) return;
+    const voices = await res.json();
+    REHEARSAL.forEach((payload, i) => { if (voices[i]) payload.voice = voices[i]; });
+  } catch (e) { /* no recordings; the browser's voice will do */ }
 }
 
 async function boot() {
@@ -306,6 +337,7 @@ async function boot() {
   }
   loop();
   connect();
+  await voiceRehearsal();
   if (params.has('rehearsal')) rehearse();
 }
 

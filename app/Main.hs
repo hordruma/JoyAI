@@ -29,7 +29,8 @@ import qualified Data.Set as Set
 import Data.Text                (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import Network.HTTP.Types       (hContentType, status200)
+import Network.HTTP.Types       (hCacheControl, hContentType, status200,
+                                 status404)
 import Network.Mime             (defaultMimeMap, defaultMimeType, mimeByExt)
 import qualified Network.Wai as Wai
 import Network.Wai.Application.Static
@@ -47,8 +48,10 @@ import System.IO                (BufferMode (LineBuffering), hSetBuffering,
 import Text.Read                (readMaybe)
 import WaiAppStatic.Types       (fileName, fromPiece)
 
+import Logic          (spokenText)
 import Network.LLM    (LLMConfig (..), annotateComment)
 import Network.Tavily (TavilyConfig (..), fetchComments)
+import Network.Voice  (Clip (..), VoiceConfig (..), synthesize)
 import Types
 
 -- | Everything the broadcast side needs, behind one lock.
@@ -56,11 +59,19 @@ data Hub = Hub
   { hubClients :: !(Map.Map Int WS.Connection)
   , hubNextId  :: !Int
   , hubRecent  :: ![LBS.ByteString]  -- ^ newest first, bounded
+  , hubClips   :: !(Map.Map Int LBS.ByteString)  -- ^ recorded readings, by number
+  , hubNextClip :: !Int
   }
 
 -- | How many recent frames a new viewer is caught up with.
 replayDepth :: Int
 replayDepth = 24
+
+-- | How many recorded readings are kept in memory to be fetched. Enough
+-- to cover the replay and some reprises; at a few hundred kilobytes
+-- each this stays small.
+clipDepth :: Int
+clipDepth = 64
 
 -- | New comments annotated per poll cycle. Bounds LLM spend.
 perCycle :: Int
@@ -104,20 +115,23 @@ main = do
   tavilyUrl   <- fromMaybe defaultTavilyEndpoint <$> envText "TAVILY_BASE_URL"
   endpoint    <- fromMaybe defaultLLMEndpoint <$> envText "LLM_BASE_URL"
   model       <- fromMaybe defaultLLMModel <$> envText "LLM_MODEL"
+  voiceConfig <- fmap VoiceConfig <$> envText "TTS_URL"
 
-  hub <- newMVar (Hub Map.empty 0 [])
+  hub <- newMVar (Hub Map.empty 0 [] Map.empty 0)
   case (tavilyKey, llmKey) of
     (Just tk, Just lk) -> do
       let tavily = TavilyConfig { tavilyEndpoint = tavilyUrl, tavilyApiKey = tk }
           llm    = LLMConfig { llmEndpoint = endpoint, llmApiKey = lk, llmModel = model }
       logLine ("LLM engine: " <> model <> " @ " <> endpoint)
-      void (forkIO (pipelineLoop pollSeconds tavily llm hub))
+      logLine (maybe "Voice: the browser's own (TTS_URL not set)"
+                     (("Voice service: " <>) . voiceEndpoint) voiceConfig)
+      void (forkIO (pipelineLoop pollSeconds tavily llm voiceConfig hub))
     _ -> logLine "TAVILY_API_KEY / LLM_API_KEY not set: no live feed, \
                  \serving the piece for rehearsal only"
 
   logLine ("Listening on port " <> T.pack (show port))
   Warp.runSettings (Warp.setPort port Warp.defaultSettings)
-    (websocketsOr WS.defaultConnectionOptions (serveViewer hub) (httpApp frontendDir))
+    (websocketsOr WS.defaultConnectionOptions (serveViewer hub) (httpApp hub frontendDir))
 
 -- | A set, non-empty environment variable.
 envText :: String -> IO (Maybe Text)
@@ -127,14 +141,21 @@ envText name = do
     Just v | not (null v) -> Just (T.pack v)
     _                     -> Nothing
 
--- | Plain HTTP: a health check, and the frontend directory. The static
--- handler refuses paths that leave its root.
-httpApp :: FilePath -> Wai.Application
-httpApp dir = \request respond ->
-  if Wai.pathInfo request == ["health"]
-    then respond (Wai.responseLBS status200
-           [(hContentType, "application/json")] "{\"status\":\"ok\"}")
-    else static request respond
+-- | Plain HTTP: a health check, recorded readings, and the frontend
+-- directory. The static handler refuses paths that leave its root.
+httpApp :: MVar Hub -> FilePath -> Wai.Application
+httpApp hub dir = \request respond -> case Wai.pathInfo request of
+  ["health"] -> respond (Wai.responseLBS status200
+    [(hContentType, "application/json")] "{\"status\":\"ok\"}")
+  ["voice", name] -> do
+    clips <- hubClips <$> readMVar hub
+    respond $ case T.stripSuffix ".wav" name >>= readMaybe . T.unpack >>= (`Map.lookup` clips) of
+      Just audio -> Wai.responseLBS status200
+        [ (hContentType, "audio/wav")
+        , (hCacheControl, "public, max-age=86400, immutable") ] audio
+      Nothing -> Wai.responseLBS status404
+        [(hContentType, "text/plain")] "no such reading"
+  _ -> static request respond
   where
     static = gzip defaultGzipSettings { gzipFiles = GzipCompress }
            $ staticApp settings
@@ -179,8 +200,9 @@ serveViewer hub pending = do
 
 -- | The ingest → annotate → broadcast loop. Errors are logged and the
 -- loop continues; nothing here can take the server down.
-pipelineLoop :: Int -> TavilyConfig -> LLMConfig -> MVar Hub -> IO ()
-pipelineLoop pollSeconds tavily llm hub = go (0 :: Int) Set.empty
+pipelineLoop
+  :: Int -> TavilyConfig -> LLMConfig -> Maybe VoiceConfig -> MVar Hub -> IO ()
+pipelineLoop pollSeconds tavily llm voiceConfig hub = go (0 :: Int) Set.empty
   where
     go n seen = do
       outcome <- try (pollOnce (queryFor n) seen)
@@ -220,8 +242,32 @@ pipelineLoop pollSeconds tavily llm hub = go (0 :: Int) Set.empty
         Right Nothing ->
           pure (Set.insert (rawText comment) seen)
         Right (Just payload) -> do
-          broadcast hub payload
+          voiced <- maybe (pure payload) (\vc -> record vc hub payload) voiceConfig
+          broadcast hub voiced
           pure (Set.insert (rawText comment) seen)
+
+-- | Have the comment read aloud and attach the recording. A voice that
+-- fails costs the comment its recording, not its place in the piece.
+record :: VoiceConfig -> MVar Hub -> CommentPayload -> IO CommentPayload
+record config hub payload = do
+  result <- runExceptT (synthesize config (targetAvatar payload) (spokenText payload))
+  case result of
+    Left err -> do
+      logLine ("Voice failed: " <> T.pack (show err))
+      pure payload
+    Right clip -> do
+      n <- modifyMVar hub $ \h ->
+        let n = hubNextClip h
+            kept = Map.insert n (clipAudio clip) (hubClips h)
+            -- Numbers only go up, so the smallest keys are the oldest.
+            trimmed = Map.drop (Map.size kept - clipDepth) kept
+        in pure (h { hubClips = trimmed, hubNextClip = n + 1 }, n)
+      pure payload
+        { voice = Just Voice
+            { audioUrl  = "/voice/" <> T.pack (show n) <> ".wav"
+            , wordTimes = clipWords clip
+            }
+        }
 
 -- | Serialize a payload, remember it for latecomers, and send it to
 -- everyone connected. A viewer whose socket fails is dropped.

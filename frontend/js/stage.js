@@ -89,6 +89,12 @@ export class Stage {
     this.time = 0;
     this.calm = window.matchMedia &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Resolution is given up before smoothness: if frames run long for
+    // a few seconds the canvas is rendered smaller and scaled up.
+    this.quality = 1;
+    this.frameMs = 16;
+    this.slowFor = 0;
+    this.lastFrameAt = 0;
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
@@ -96,9 +102,30 @@ export class Stage {
   resize() {
     const w = window.innerWidth; const h = window.innerHeight;
     this.width = w; this.height = h;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const ratio = Math.min(window.devicePixelRatio || 1, 2) * this.quality;
+    this.renderer.setPixelRatio(Math.max(0.5, ratio));
     this.renderer.setSize(w, h, false);
-    this.field.resize(w, h);
+    this.field.resize(w, h, this.quality);
+  }
+
+  // Watch the real frame time and step the resolution down when the
+  // machine cannot keep up. It never steps back up: a display that
+  // struggled once will struggle again, and hunting looks worse than
+  // softness.
+  _pace() {
+    const now = performance.now();
+    const ms = now - this.lastFrameAt;
+    this.lastFrameAt = now;
+    // Long gaps are a hidden tab or a stall, not a slow GPU.
+    if (ms > 1000 || document.hidden) { this.slowFor = 0; return; }
+    this.frameMs += (ms - this.frameMs) * 0.06;
+    this.slowFor = this.frameMs > 28 ? this.slowFor + ms : 0;
+    if (this.slowFor > 2500 && this.quality > 0.3) {
+      this.quality *= 0.72;
+      this.slowFor = 0;
+      this.frameMs = 16;
+      this.resize();
+    }
   }
 
   // Load the scan once and stand up a head for each placeholder.
@@ -193,6 +220,7 @@ export class Stage {
   }
 
   frame(dt) {
+    this._pace();
     this.time += dt;
     const r = this.renderer;
     const u = this.field.uniforms;

@@ -9,6 +9,7 @@ module Types
   ( SentimentScore (..)
   , AvatarTarget (..)
   , RawComment (..)
+  , Voice (..)
   , CommentPayload (..)
   , PipelineError (..)
   ) where
@@ -44,6 +45,17 @@ data RawComment = RawComment
   , rawSource :: !(Maybe Text)  -- ^ host name of the page it came from
   } deriving (Show, Eq)
 
+-- | A recorded reading of a comment: where the frontend can fetch the
+-- audio, and when each whitespace-separated word of the spoken text
+-- starts and ends in it (seconds), so captions and lips can follow.
+data Voice = Voice
+  { audioUrl  :: !Text
+  , wordTimes :: ![(Double, Double)]
+  } deriving (Show, Eq, Generic)
+
+instance ToJSON Voice
+instance FromJSON Voice
+
 -- | Core domain record for processed comment payloads. This is the wire
 -- format: the frontend consumes its generically derived JSON as-is.
 --
@@ -57,6 +69,7 @@ data CommentPayload = CommentPayload
   , englishTranslation :: !(Maybe Text)  -- ^ only when the source isn't English
   , targetAvatar       :: !AvatarTarget
   , source             :: !(Maybe Text)  -- ^ host name the comment came from
+  , voice              :: !(Maybe Voice) -- ^ absent: the browser's own voice reads it
   } deriving (Show, Eq, Generic)
 
 instance ToJSON CommentPayload
@@ -69,6 +82,7 @@ data PipelineError
   = HttpError Text   -- ^ Transport-level failure (timeouts, refused, non-2xx)
   | ParseError Text  -- ^ Payload did not decode into the expected ADT
   | LLMError Text    -- ^ The LLM declined or returned an unusable response
+  | VoiceError Text  -- ^ The voice service could not read the comment
   deriving (Show, Eq, Generic)
 
 instance ToJSON PipelineError
