@@ -30,8 +30,16 @@ import threading
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import numpy as np
-from piper import PiperVoice, SynthesisConfig
+# The piece reads strangers' words aloud; nothing about that should be
+# reported to anyone. This must be set before the runtime is imported.
+os.environ.setdefault("ORT_DISABLE_TELEMETRY", "1")
+
+import numpy as np  # noqa: E402
+import onnxruntime  # noqa: E402
+from piper import PiperVoice, SynthesisConfig  # noqa: E402
+
+if hasattr(onnxruntime, "disable_telemetry_events"):
+    onnxruntime.disable_telemetry_events()
 
 LOG = logging.getLogger("joyai.tts")
 

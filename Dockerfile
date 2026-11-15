@@ -4,8 +4,10 @@
 FROM haskell:9.10-slim-bookworm AS build
 WORKDIR /build
 # Dependencies first, so they are cached until the cabal files change.
+# Both local components are named so that neither is built here: the
+# executable depends on the library, whose sources are not copied yet.
 COPY joyai.cabal cabal.project ./
-RUN cabal update && cabal build --only-dependencies exe:joyai
+RUN cabal update && cabal build --only-dependencies lib:joyai exe:joyai
 COPY src src
 COPY app app
 COPY LICENSE .
