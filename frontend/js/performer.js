@@ -136,7 +136,7 @@ export class Performer {
       strength: clamp01(strength === undefined ? 0.85 : strength),
       t0: this.clock, env: 0
     };
-    if (this.onLeak) this.onLeak(kind, (onset + hold + offset) * 1000);
+    if (this.onLeak) this.onLeak();
     return true;
   }
 

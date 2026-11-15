@@ -36,8 +36,8 @@ Each face is composed every frame from independent layers:
 | Eyes | Saccades between the viewer, the other face, and elsewhere, with real eyeball rotation, lids that follow the gaze, fixational tremor, and blinks (Sorrow's are slower). The listener watches the speaker. |
 | Head | Posture, drift, a nod on each weighty word, a recoil on a slip. |
 
-After each slip a small readout under the face names what got out and
-for how long, and the word that caused it is briefly marked.
+Nothing on screen names a slip. The only trace is the word that caused
+it, briefly marked in the other face's colour.
 
 **The background** is a field of smoke the two faces share: warm and
 rising behind Joy, cold and sinking behind Sorrow. Each side swells

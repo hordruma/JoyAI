@@ -91,18 +91,6 @@ function addLine(payload, script) {
   return { lineEl, wordEls };
 }
 
-// The readout under a face after it slips: which emotion, for how long.
-function annotateSlip(id, kind, ms) {
-  const label = $('slip-' + id);
-  if (!label) return;
-  clearTimeout(label._t1); clearTimeout(label._t2);
-  label._t1 = setTimeout(() => {
-    label.textContent = kind + ' · ' + (ms / 1000).toFixed(2) + ' s';
-    label.classList.add('on');
-    label._t2 = setTimeout(() => label.classList.remove('on'), 2600);
-  }, ms);
-}
-
 // --- Performance ---------------------------------------------------------
 
 function nextPayload() {
@@ -304,10 +292,7 @@ async function boot() {
       SadAvatar: $('face-SadAvatar')
     });
     for (const id of AVATARS) {
-      cast[id].performer.onLeak = (kind, ms) => {
-        stage.pulse(id, 1);
-        annotateSlip(id, kind, ms);
-      };
+      cast[id].performer.onLeak = () => stage.pulse(id, 1);
     }
     if (params.get('slips') === 'slow') toggleSlowSlips();
     document.body.classList.add('ready');

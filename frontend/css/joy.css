@@ -105,31 +105,16 @@ body {
   color: var(--dim);
   text-align: center;
   margin-top: 0.2rem;
-  min-height: 2.6em;
   transition: color 0.6s;
 }
 .voice.active .plate { color: var(--ink); }
 .plate .name { display: block; margin-right: -0.34em; }
 
-/* The readout after a slip: which emotion got out, and for how long. */
-.plate .slip {
-  display: block;
-  margin-top: 0.35em;
-  font-size: 0.6rem;
-  letter-spacing: 0.16em;
-  text-transform: lowercase;
-  opacity: 0;
-  transition: opacity 1.6s ease;
-}
-.plate .slip.on { opacity: 0.85; transition-duration: 0.15s; }
-.voice[data-avatar="HappyAvatar"] .slip { color: var(--cool); }
-.voice[data-avatar="SadAvatar"] .slip { color: var(--warm); }
-
 /* --- Captions ---------------------------------------------------------- */
 
 .lines {
   width: min(100%, 27rem);
-  margin-top: clamp(0.3rem, 1.4vh, 1rem);
+  margin-top: clamp(0.9rem, 2.6vh, 1.8rem);
 }
 /* The two streams are deliberately out of step. */
 .voice.offset .lines { margin-top: clamp(1.6rem, 6vh, 4rem); }
