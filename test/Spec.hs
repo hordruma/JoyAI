@@ -15,7 +15,7 @@ import qualified Data.Text as T
 import System.Exit     (exitFailure)
 
 import Logic
-import Network.LLM     (decodeAnnotation, stripFences)
+import Network.LLM     (decodeAnnotation, decodeClaude, stripFences)
 import Network.Tavily  (cleanText)
 import Types
 
@@ -31,6 +31,14 @@ comment = RawComment "AI art is soulless." (Just "example.com")
 completion :: Text -> LBS.ByteString
 completion content = Aeson.encode $ object
   [ "choices" .= [ object [ "message" .= object [ "content" .= content ] ] ] ]
+
+-- | A Messages API body with the given stop reason and content blocks.
+claude :: Text -> [Aeson.Value] -> LBS.ByteString
+claude stop blocks = Aeson.encode $ object
+  [ "stop_reason" .= stop, "content" .= blocks ]
+
+textBlock :: Text -> Aeson.Value
+textBlock t = object [ "type" .= ("text" :: Text), "text" .= t ]
 
 checks :: [Check]
 checks =
@@ -114,6 +122,16 @@ checks =
     , fmap (>>= englishTranslation) (decodeAnnotation comment (completion
         "{\"sentiment\":\"Negative\",\"sentiment_score\":0.8,\"english_translation\":\"AI art is soulless.\"}"))
         ==> Right Nothing )
+  , ( "a Claude reply decodes past its thinking block"
+    , fmap (fmap targetAvatar) (decodeClaude comment (claude "end_turn"
+        [ object [ "type" .= ("thinking" :: Text), "thinking" .= ("" :: Text) ]
+        , textBlock "{\"sentiment\":\"Positive\",\"sentiment_score\":0.7,\"english_translation\":null}"
+        ]))
+        ==> Right (Just SadAvatar) )
+  , ( "a Claude refusal is an error, whatever text came with it"
+    , isLeft (decodeClaude comment (claude "refusal" [textBlock "{}"])) )
+  , ( "a Claude reply cut off by max_tokens is an error"
+    , isLeft (decodeClaude comment (claude "max_tokens" [textBlock "{\"sentiment\":"])) )
   , ( "prose instead of json is an error, not a crash"
     , isLeft (decodeAnnotation comment (completion "I'd rather not.")) )
   , ( "an empty completion is an error, not a crash"

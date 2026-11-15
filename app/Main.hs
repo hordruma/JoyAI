@@ -49,7 +49,7 @@ import Text.Read                (readMaybe)
 import WaiAppStatic.Types       (fileName, fromPiece)
 
 import Logic          (spokenText)
-import Network.LLM    (LLMConfig (..), annotateComment)
+import Network.LLM    (Dialect (..), LLMConfig (..), annotateComment)
 import Network.Tavily (TavilyConfig (..), fetchComments)
 import Network.Voice  (Clip (..), VoiceConfig (..), synthesize)
 import Types
@@ -101,6 +101,14 @@ defaultLLMEndpoint = "https://api.z.ai/api/paas/v4/chat/completions"
 defaultLLMModel :: Text
 defaultLLMModel = "glm-4.5-air"
 
+-- | With @LLM_PROVIDER=anthropic@ the backend speaks the Claude Messages
+-- API instead.
+claudeEndpoint :: Text
+claudeEndpoint = "https://api.anthropic.com/v1/messages"
+
+claudeModel :: Text
+claudeModel = "claude-opus-5-5"
+
 defaultTavilyEndpoint :: Text
 defaultTavilyEndpoint = "https://api.tavily.com/search"
 
@@ -111,17 +119,28 @@ main = do
   pollSeconds <- max 5 . fromMaybe 60 . (>>= readMaybe) <$> lookupEnv "POLL_SECONDS"
   frontendDir <- fromMaybe "frontend" <$> lookupEnv "FRONTEND_DIR"
   tavilyKey   <- envText "TAVILY_API_KEY"
-  llmKey      <- envText "LLM_API_KEY"
+  provider    <- maybe "" T.toLower <$> envText "LLM_PROVIDER"
+  let dialect = if provider `elem` ["anthropic", "claude"]
+                  then ClaudeMessages else ChatCompletions
+      (endpoint0, model0) = case dialect of
+        ClaudeMessages  -> (claudeEndpoint, claudeModel)
+        ChatCompletions -> (defaultLLMEndpoint, defaultLLMModel)
+  genericKey  <- envText "LLM_API_KEY"
+  claudeKey   <- envText "ANTHROPIC_API_KEY"
+  let llmKey = case dialect of
+        ClaudeMessages  -> maybe claudeKey Just genericKey
+        ChatCompletions -> genericKey
   tavilyUrl   <- fromMaybe defaultTavilyEndpoint <$> envText "TAVILY_BASE_URL"
-  endpoint    <- fromMaybe defaultLLMEndpoint <$> envText "LLM_BASE_URL"
-  model       <- fromMaybe defaultLLMModel <$> envText "LLM_MODEL"
+  endpoint    <- fromMaybe endpoint0 <$> envText "LLM_BASE_URL"
+  model       <- fromMaybe model0 <$> envText "LLM_MODEL"
   voiceConfig <- fmap VoiceConfig <$> envText "TTS_URL"
 
   hub <- newMVar (Hub Map.empty 0 [] Map.empty 0)
   case (tavilyKey, llmKey) of
     (Just tk, Just lk) -> do
       let tavily = TavilyConfig { tavilyEndpoint = tavilyUrl, tavilyApiKey = tk }
-          llm    = LLMConfig { llmEndpoint = endpoint, llmApiKey = lk, llmModel = model }
+          llm    = LLMConfig { llmDialect = dialect, llmEndpoint = endpoint
+                             , llmApiKey = lk, llmModel = model }
       logLine ("LLM engine: " <> model <> " @ " <> endpoint)
       logLine (maybe "Voice: the browser's own (TTS_URL not set)"
                      (("Voice service: " <>) . voiceEndpoint) voiceConfig)
@@ -239,7 +258,8 @@ pipelineLoop pollSeconds tavily llm voiceConfig hub = go (0 :: Int) Set.empty
         Left err -> do
           logLine ("Annotation failed: " <> T.pack (show err))
           pure seen
-        Right Nothing ->
+        Right Nothing -> do
+          logLine ("Neutral, left out: " <> T.take 70 (rawText comment))
           pure (Set.insert (rawText comment) seen)
         Right (Just payload) -> do
           voiced <- maybe (pure payload) (\vc -> record vc hub payload) voiceConfig

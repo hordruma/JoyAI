@@ -1,5 +1,7 @@
 # --- The backend ------------------------------------------------------------
-FROM haskell:9.4-slim AS build
+# Bookworm, not the older Debian the 9.4 images are stuck on: its
+# assembler cannot build the current crypto dependencies.
+FROM haskell:9.10-slim-bookworm AS build
 WORKDIR /build
 # Dependencies first, so they are cached until the cabal files change.
 COPY joyai.cabal cabal.project ./

@@ -120,9 +120,10 @@ long.
 | Variable | Default | Notes |
 |---|---|---|
 | `TAVILY_API_KEY` | — | Without this and `LLM_API_KEY` the server runs in rehearsal-only mode |
-| `LLM_API_KEY` | — | Bearer token for the chat-completions provider |
-| `LLM_BASE_URL` | `https://api.z.ai/api/paas/v4/chat/completions` | Full chat-completions URL |
-| `LLM_MODEL` | `glm-4.5-air` | e.g. `glm-4-flash` (free tier) |
+| `LLM_API_KEY` | — | API key for the LLM provider (`ANTHROPIC_API_KEY` also works for Claude) |
+| `LLM_PROVIDER` | — | `anthropic` to use Claude through its own Messages API; otherwise any OpenAI-compatible provider |
+| `LLM_BASE_URL` | `https://api.z.ai/api/paas/v4/chat/completions` | Full endpoint URL (Claude: `https://api.anthropic.com/v1/messages`) |
+| `LLM_MODEL` | `glm-4.5-air` | Claude default: `claude-opus-5-5` |
 | `PORT` | `8080` | The one port everything is served on |
 | `POLL_SECONDS` | `60` | Pause between search cycles |
 | `FRONTEND_DIR` | `frontend` | Where the static files live |
@@ -135,6 +136,15 @@ Any OpenAI-compatible provider works. Kimi (Moonshot), for example:
 ```sh
 export LLM_BASE_URL=https://api.moonshot.ai/v1/chat/completions
 export LLM_MODEL=kimi-k2-0905-preview
+```
+
+Claude is spoken to natively, with a JSON schema guaranteeing the shape
+of the reply:
+
+```sh
+export LLM_PROVIDER=anthropic
+export LLM_API_KEY=sk-ant-...
+export LLM_MODEL=claude-haiku-5-5   # optional; much cheaper than the default
 ```
 
 ## How it works
@@ -162,7 +172,7 @@ export LLM_MODEL=kimi-k2-0905-preview
 | `src/Types.hs` | Algebraic data types (`SentimentScore`, `AvatarTarget`, `CommentPayload`) — the wire format |
 | `src/Logic.hs` | Pure core, no IO imports: juxtaposition routing, excerpting, attribution |
 | `src/Network/Tavily.hs` | Search ingestion and text cleaning, errors in `ExceptT` |
-| `src/Network/LLM.hs` | Annotation engine (OpenAI-compatible chat completions, JSON mode) |
+| `src/Network/LLM.hs` | Annotation engine (OpenAI-compatible chat completions, or the Claude Messages API) |
 | `src/Network/Voice.hs` | Client for the voice service |
 | `app/Main.hs` | Warp server: static frontend, `/health`, `/voice`, WebSocket feed, polling loop |
 | `tts/server.py` | The voice service: Piper, the two deliveries, word timings |
