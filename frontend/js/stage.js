@@ -20,8 +20,12 @@ const TRANSCODER_URL = new URL('../vendor/', import.meta.url).href;
 // can turn and nod without being cut off at the edge.
 const BLEED = 1.5;
 const FOV = 21;
-// Fraction of the placeholder's height the head occupies.
-const FILL = 0.9;
+// Fraction of the placeholder's height the head occupies at rest, and
+// how far above centre it sits. The gap this leaves underneath is for
+// the chin, which drops well below its resting place when the jaw opens
+// and must not be cut off or run into the name below.
+const FILL = 0.82;
+const LIFT = 0.055;
 
 // Each face has a soft key of its own, a glow from its own smoke behind
 // it, and a "spill" on the cheek that faces the other head, in the
@@ -45,16 +49,16 @@ const LIGHTS = {
   }
 };
 
-// The scan is a head with no body. Rather than show the cut, the head
-// fades into the field below the jaw and behind the ears. Only front
-// faces are drawn and depth is still written, so a single convex-ish
-// head blends correctly without any sorting.
+// The scan is a face and skull with nothing behind or below it. The
+// back of the head fades into the field, so the face seems to surface
+// from the smoke; the jaw and chin are left whole. Only front faces are
+// drawn and depth is still written, so a single convex-ish head blends
+// correctly without any sorting.
 function dissolve(material, fade) {
   material.side = THREE.FrontSide;
   material.transparent = true;
   material.depthWrite = true;
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.uFadeY = fade.y;
     shader.uniforms.uFadeZ = fade.z;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vStagePos;')
@@ -63,11 +67,9 @@ function dissolve(material, fade) {
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         varying vec3 vStagePos;
-        uniform vec2 uFadeY;
         uniform vec2 uFadeZ;`)
       .replace('#include <dithering_fragment>', `#include <dithering_fragment>
-        float stageFade = smoothstep(uFadeY.x, uFadeY.y, vStagePos.y)
-                        * smoothstep(uFadeZ.x, uFadeZ.y, vStagePos.z);
+        float stageFade = smoothstep(uFadeZ.x, uFadeZ.y, vStagePos.z);
         if (stageFade < 0.004) discard;
         gl_FragColor.a *= stageFade;`);
   };
@@ -143,7 +145,6 @@ export class Stage {
     this.headHeight = size.y;
 
     const fade = {
-      y: { value: new THREE.Vector2(box.min.y + size.y * 0.02, box.min.y + size.y * 0.24) },
       z: { value: new THREE.Vector2(box.min.z + size.z * 0.1, box.min.z + size.z * 0.5) }
     };
 
@@ -194,7 +195,8 @@ export class Stage {
       const camera = new THREE.PerspectiveCamera(FOV, 1, 0.01, 100);
       const visible = (size.y * BLEED) / FILL;
       const distance = visible / (2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)));
-      const eyeLine = center.y + size.y * 0.02;
+      // Aiming below the head's centre is what lifts it in the frame.
+      const eyeLine = center.y - (size.y / FILL) * LIFT;
       camera.position.set(center.x, eyeLine, center.z + distance);
       camera.lookAt(center.x, eyeLine, center.z);
 
